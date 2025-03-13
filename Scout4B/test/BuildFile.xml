@@ -1,0 +1,4 @@
+<use name="FWCore/TestProcessor"/>
+<use name="Configuration/StandardSequences"/>
+<use name="FWCore/Framework"/>
+<use name="FWCore/MessageLogger"/>

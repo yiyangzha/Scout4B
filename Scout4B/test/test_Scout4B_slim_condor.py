@@ -254,8 +254,6 @@ process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
 process.vertexFinderBsPP = cms.Path(process.Scout4BVertexFinderBsPP)
 process.vertexFinderB0JK = cms.Path(process.Scout4BVertexFinderB0JK)
 process.vertexFinderB0JKB = cms.Path(process.Scout4BVertexFinderB0JKB)
-process.vertexFinderD0 = cms.Path(process.Scout4BVertexFinderD0)
-process.vertexFinderD0B = cms.Path(process.Scout4BVertexFinderD0B)
 
 process.schedule = cms.Schedule(
     process.convert_step,

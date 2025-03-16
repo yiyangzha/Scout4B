@@ -12,6 +12,9 @@
 #include <string>
 
 #include "TMath.h"
+#include "TVector.h"
+#include "TMatrix.h"
+#include "algorithm"
 #include "TLorentzVector.h"
 #include "TTree.h"
 #include "TH2F.h"
@@ -35,7 +38,6 @@
 #include "DataFormats/HLTReco/interface/TriggerObject.h"
 #include "DataFormats/HLTReco/interface/TriggerEvent.h"
 #include "DataFormats/HLTReco/interface/TriggerEventWithRefs.h"
-#include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
 #include "DataFormats/TrackReco/interface/Track.h"
@@ -62,6 +64,7 @@
 #include "DataFormats/Math/interface/Vector3D.h"
 #include "DataFormats/Math/interface/deltaR.h"
 #include "DataFormats/GeometryCommonDetAlgo/interface/DeepCopyPointer.h"
+#include "DataFormats/GeometryCommonDetAlgo/interface/Measurement1D.h"
 #include "DataFormats/GeometryVector/interface/GlobalPoint.h"
 #include "DataFormats/CLHEP/interface/AlgebraicObjects.h"
 #include "DataFormats/CLHEP/interface/Migration.h"
@@ -88,14 +91,23 @@
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 #include "TrackingTools/TransientTrack/interface/TransientTrack.h"
 #include "TrackingTools/TransientTrack/interface/TrackTransientTrack.h"
+#include "TrackingTools/PatternTools/interface/TwoTrackMinimumDistance.h"
+#include "TrackingTools/IPTools/interface/IPTools.h"
+#include "TrackingTools/GeomPropagators/interface/AnalyticalImpactPointExtrapolator.h"
 
 #include "MagneticField/Engine/interface/MagneticField.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 
+#include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
+
 #include "MuonAnalysis/MuonAssociators/interface/PropagateToMuon.h"
 #include "MuonAnalysis/MuonAssociators/interface/PropagateToMuonSetup.h"
+
+#include "Scout4B/Scout4B/interface/Displacement.h"
+#include "Scout4B/Scout4B/interface/KinematicFitResult.h"
+#include "Scout4B/Scout4B/interface/KinFitUtils.h"
 
 using namespace std;
 using namespace edm;
@@ -106,60 +118,36 @@ using namespace trigger;
 //
 // struct definition
 //
-struct VertexFitResult
-{
-   std::vector<TLorentzVector> daughterP4; // NP个子粒子的四动量（均来自拟合结果）
-   TLorentzVector motherP4;                // 母粒子的四动量（来自顶点拟合后的状态）
-   double massError;                       // 拟合得到的母粒子质量误差（sigma）
-   double normChi2;                        // 归一化chi2 (chi2/ndf)
-   int motherCharge;                       // 母粒子的电荷（来自拟合结果）
-   std::vector<int> daughterCharge;        // 每个子粒子的电荷（来自拟合结果）
-   std::vector<unsigned int> trackIndices; // 记录参与质量约束拟合的tracks在输入tracks中的索引
-
-   VertexFitResult()
-   {
-      daughterP4.clear();
-      motherP4.SetXYZM(0, 0, 0, 0);
-      massError = 0;
-      normChi2 = 0;
-      motherCharge = 0;
-      daughterCharge.clear();
-      trackIndices.clear();
-   }
-};
-
 struct XFitResult
 {
-   // 每个 M 候选经过质量约束拟合后得到的子粒子四动量（分组保存，组数为 NM）
    std::vector<std::pair<std::vector<TLorentzVector>, std::vector<int>>> mDaughter;
-   // 每个 M 候选母粒子的四动量及电荷
    std::vector<std::pair<TLorentzVector, int>> mMother;
    std::vector<double> mMassError;
-   // X 粒子的拟合结果：四动量和电荷
    TLorentzVector xMotherP4;
    int xMotherCharge;
-   // X 粒子拟合的质量误差和归一化 chi2
    double xMassError;
    double normChi2;
 
-   // 新增信息：记录组成该 X 候选的各个 M 候选在 vertexs 中的位置
-   // 对应每个 M 候选：所属组号和该组内候选索引
-   std::vector<unsigned int> mGroupIndices;
-   std::vector<unsigned int> mCandidateIndices;
-   // 对应每个 M 候选，其 particle 在原始 tracks 中的索引（从 VertexFitResult 中获得）
+   double xlxy;
+   double xlxyErr;
+   double xsigLxy;
+   double xalphaBS;
+   double xalphaBSErr;
+
+   std::vector<unsigned int> mIndices;
    std::vector<std::vector<unsigned int>> mTrackIndices;
 
    XFitResult()
    {
-      mDaughter.clear();
-      mMother.clear();
       xMotherP4.SetXYZM(0, 0, 0, 0);
       xMotherCharge = 0;
       xMassError = 0;
       normChi2 = 0;
-      mGroupIndices.clear();
-      mCandidateIndices.clear();
-      mTrackIndices.clear();
+      xlxy = -999;
+      xlxyErr = -999;
+      xsigLxy = -999;
+      xalphaBS = -999;
+      xalphaBSErr = -999;
    }
 };
 
@@ -183,9 +171,16 @@ public:
 private:
    UInt_t getTriggerBits(const edm::Event &);
 
-   // Difine core functions for sv fitting
+   float distanceOfClosestApproach(const reco::Track *track1, const reco::Track *track2, const MagneticField &bFieldHandle);
+   Measurement1D distanceOfClosestApproach(const reco::Track *track, const reco::Vertex &vertex, const MagneticField &bFieldHandle);
 
-   std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> performVertexFit(
+   KinematicFitResult KinematicFitter(std::vector<reco::Track *> trks, std::vector<double> masses, const MagneticField &bFieldHandle);
+   KinematicFitResult MCKinematicFitter(std::vector<reco::Track *> trks, std::vector<double> masses, double MMass, double MMassErr, const MagneticField &bFieldHandle);
+
+   Scout4B::Displacements compute3dDisplacement(const KinematicFitResult &fit, bool closestIn3D = true);
+
+   // Difine core functions for sv fitting
+   std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> performVertexFit(
        std::vector<reco::Track> tracks,
        unsigned int NP,
        int MCharge,
@@ -205,7 +200,7 @@ private:
    std::vector<XFitResult> performXVertexFit(
        std::vector<reco::Track> tracks,
        unsigned int NM,
-       const std::vector<std::vector<VertexFitResult>> &vertexs,
+       const std::vector<std::vector<KinematicFitResult>> &vertexs,
        int XCharge,
        double XMass,
        double XMassWin,
@@ -223,6 +218,7 @@ private:
    const bool multiM_;
    const edm::EDGetTokenT<std::vector<reco::Track>> input_recoTrackMuon_token_;
    const edm::EDGetTokenT<std::vector<reco::Track>> input_recoTrack_token_;
+   const edm::EDGetTokenT<std::vector<reco::Vertex>> input_recoVertex_token_;
    edm::EDGetTokenT<edm::TriggerResults> triggerresults_;
    std::vector<std::string> FilterNames_;
    const std::vector<double> MMuMass_;
@@ -253,6 +249,13 @@ private:
    const double MMassMin_;
    const double XMassMin_;
    const edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magneticFieldToken_;
+
+   const AnalyticalImpactPointExtrapolator *impactPointExtrapolator;
+
+   edm::EDGetTokenT<reco::BeamSpot> beamSpotToken_;
+
+   const reco::BeamSpot *beamSpot_;
+   std::vector<reco::Vertex> vertices_;
 
    // Define output parameters
    std::string file_name;
@@ -285,13 +288,20 @@ private:
    double xChi2[5];
    int xCharge[5];
 
+   double xlxy[5];
+   double xlxyErr[5];
+   double xsigLxy[5];
+   double xalphaBS[5];
+   double xalphaBSErr[5];
+
    // M particle branches
    double mMass[5][4];
    double mMassError[5][4];
+   double mNMCMass[5][4];
+   double mNMCMassError[5][4];
    double mPt[5][4];
    double mEta[5][4];
    double mPhi[5][4];
-   double mChi2[5][4];
    int mCharge[5][4];
 
    double NMC_mMassMu[5][4];
@@ -302,6 +312,12 @@ private:
    double NMC_mChi2Mu[5][4];
    int NMC_mChargeMu[5][4];
 
+   double NMC_mlxyMu[5][4];
+   double NMC_mlxyErrMu[5][4];
+   double NMC_msigLxyMu[5][4];
+   double NMC_malphaBSMu[5][4];
+   double NMC_malphaBSErrMu[5][4];
+
    double NMC_mMassTrk[5][4];
    double NMC_mMassErrTrk[5][4];
    double NMC_mPtTrk[5][4];
@@ -309,6 +325,12 @@ private:
    double NMC_mPhiTrk[5][4];
    double NMC_mChi2Trk[5][4];
    int NMC_mChargeTrk[5][4];
+
+   double NMC_mlxyTrk[5][4];
+   double NMC_mlxyErrTrk[5][4];
+   double NMC_msigLxyTrk[5][4];
+   double NMC_malphaBSTrk[5][4];
+   double NMC_malphaBSErrTrk[5][4];
 
    // Daughter particle branches
    double dMass[5][4][8];
@@ -338,6 +360,7 @@ Scout4BRecoSecondaryVertexAnalyzer::Scout4BRecoSecondaryVertexAnalyzer(const edm
       multiM_(iConfig.getUntrackedParameter<bool>("multiM", false)),
       input_recoTrackMuon_token_(consumes<std::vector<reco::Track>>(iConfig.getParameter<edm::InputTag>("recoTrackMuon"))),
       input_recoTrack_token_(consumes<std::vector<reco::Track>>(iConfig.getParameter<edm::InputTag>("recoTrack"))),
+      input_recoVertex_token_(consumes<std::vector<reco::Vertex>>(iConfig.getParameter<edm::InputTag>("recoVertex"))),
       triggerresults_(consumes<edm::TriggerResults>(iConfig.getParameter<edm::InputTag>("TriggerResults"))),
       FilterNames_(iConfig.getParameter<std::vector<std::string>>("FilterNames")),
       MMuMass_(iConfig.getParameter<std::vector<double>>("MMuMass")),
@@ -367,7 +390,9 @@ Scout4BRecoSecondaryVertexAnalyzer::Scout4BRecoSecondaryVertexAnalyzer(const edm
       maxLoop_(iConfig.getUntrackedParameter<unsigned long long>("maxLoop", 1000000000)),
       MMassMin_(iConfig.getUntrackedParameter<double>("MMassMin", 1e-2)),
       XMassMin_(iConfig.getUntrackedParameter<double>("XMassMin", 1e-2)),
-      magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>())
+      magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
+      beamSpotToken_(consumes<reco::BeamSpot>(iConfig.getParameter<edm::InputTag>("beamSpot"))),
+      beamSpot_(nullptr)
 {
 }
 
@@ -403,8 +428,16 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
    Scout4BTree->Branch("X_Chi2", xChi2, "X_Chi2[5]/D");
    Scout4BTree->Branch("X_Charge", xCharge, "X_Charge[5]/I");
 
+   Scout4BTree->Branch("X_lxy", xlxy, "X_lxy[5]/D");
+   Scout4BTree->Branch("X_lxyErr", xlxyErr, "X_lxyErr[5]/D");
+   Scout4BTree->Branch("X_sigLxy", xsigLxy, "X_sigLxy[5]/D");
+   Scout4BTree->Branch("X_alphaBS", xalphaBS, "X_alphaBS[5]/D");
+   Scout4BTree->Branch("X_alphaBSErr", xalphaBSErr, "X_alphaBSErr[5]/D");
+
    Scout4BTree->Branch("M_Mass", mMass, "M_Mass[5][4]/D");
    Scout4BTree->Branch("M_MassError", mMassError, "M_MassError[5][4]/D");
+   Scout4BTree->Branch("M_NMC_Mass", mNMCMass, "M_NMC_Mass[5][4]/D");
+   Scout4BTree->Branch("M_NMC_MassError", mNMCMassError, "M_NMC_MassError[5][4]/D");
    Scout4BTree->Branch("M_Pt", mPt, "M_Pt[5][4]/D");
    Scout4BTree->Branch("M_Eta", mEta, "M_Eta[5][4]/D");
    Scout4BTree->Branch("M_Phi", mPhi, "M_Phi[5][4]/D");
@@ -433,12 +466,25 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
    NMC_Scout4BTree->Branch("NMC_M_EtaMu", NMC_mEtaMu, "NMC_M_EtaMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_PhiMu", NMC_mPhiMu, "NMC_M_PhiMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_ChargeMu", NMC_mChargeMu, "NMC_M_ChargeMu[5][4]/I");
+   NMC_Scout4BTree->Branch("NMC_M_Chi2Mu", NMC_mChi2Mu, "NMC_M_Chi2Mu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_MassTrk", NMC_mMassTrk, "NMC_M_MassTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_MassErrTrk", NMC_mMassErrTrk, "NMC_M_MassErrTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_PtTrk", NMC_mPtTrk, "NMC_M_PtTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_EtaTrk", NMC_mEtaTrk, "NMC_M_EtaTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_PhiTrk", NMC_mPhiTrk, "NMC_M_PhiTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_ChargeTrk", NMC_mChargeTrk, "NMC_M_ChargeTrk[5][4]/I");
+   NMC_Scout4BTree->Branch("NMC_M_Chi2Trk", NMC_mChi2Trk, "NMC_M_Chi2Trk[5][4]/D");
+
+   NMC_Scout4BTree->Branch("NMC_M_lxyMu", NMC_mlxyMu, "NMC_M_lxyMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lxyErrMu", NMC_mlxyErrMu, "NMC_M_lxyErrMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLxyMu", NMC_msigLxyMu, "NMC_M_sigLxyMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSMu", NMC_malphaBSMu, "NMC_M_alphaBSMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSErrMu", NMC_malphaBSErrMu, "NMC_M_alphaBSErrMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lxyTrk", NMC_mlxyTrk, "NMC_M_lxyTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lxyErrTrk", NMC_mlxyErrTrk, "NMC_M_lxyErrTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLxyTrk", NMC_msigLxyTrk, "NMC_M_sigLxyTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSTrk", NMC_malphaBSTrk, "NMC_M_alphaBSTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSErrTrk", NMC_malphaBSErrTrk, "NMC_M_alphaBSErrTrk[5][4]/D");
 
    NMC_Scout4BTree->Branch("NMC_D_MassMu", NMC_dMassMu, "NMC_D_MassMu[5][4][8]/D");
    NMC_Scout4BTree->Branch("NMC_D_PtMu", NMC_dPtMu, "NMC_D_PtMu[5][4][8]/D");
@@ -466,11 +512,30 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 
    const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
 
+   AnalyticalImpactPointExtrapolator extrapolator(&bFieldHandle);
+   impactPointExtrapolator = &extrapolator;
+
+   Handle<reco::BeamSpot> beamSpotHandle;
+   iEvent.getByToken(beamSpotToken_, beamSpotHandle);
+
+   if (!beamSpotHandle.isValid())
+   {
+      cout << "Invalid beam spot" << endl;
+      return;
+   }
+
+   beamSpot_ = beamSpotHandle.product();
+
    // Collect inputs
    Handle<std::vector<reco::Track>> recoTrackMuon;
    iEvent.getByToken(input_recoTrackMuon_token_, recoTrackMuon);
    Handle<std::vector<reco::Track>> recoTrack;
    iEvent.getByToken(input_recoTrack_token_, recoTrack);
+   Handle<std::vector<reco::Vertex>> recoVertex;
+   iEvent.getByToken(input_recoVertex_token_, recoVertex);
+
+   // get vertices_
+   vertices_ = *recoVertex;
 
    run = iEvent.id().run();
    event = iEvent.id().event();
@@ -604,28 +669,28 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    }
 
    // Step 1: Fit MMuMass M particles from muon trks
-   vector<vector<VertexFitResult>> mCandidatesMu;
-   vector<vector<VertexFitResult>> NMC_mCandidatesMu;
+   vector<vector<KinematicFitResult>> mCandidatesMu;
+   vector<vector<KinematicFitResult>> NMC_mCandidatesMu;
    for (unsigned int i = 0; i < NMmu_; i++)
    {
       // 构造用于拟合的 particle 质量及误差向量，长度为 NPmu_[i]，取输入的 MuMass 参数（保持不变）
       vector<double> PMass_mu(NPmu_[i], MuMass_);
       vector<double> PMassErr_mu(NPmu_[i], MuMassErr_);
-      std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> res = performVertexFit(goodTrackMuons,
-                                                                                                   NPmu_[i],
-                                                                                                   MChargeMu_[i],
-                                                                                                   MMuMass_[i],
-                                                                                                   MMuMassErr_[i],
-                                                                                                   MMassWin_,
-                                                                                                   vProbMin_,
-                                                                                                   PMass_mu,
-                                                                                                   PMassErr_mu,
-                                                                                                   MuCharge_v_[i],
-                                                                                                   MMassMin_,
-                                                                                                   doIso_,
-                                                                                                   PIso_,
-                                                                                                   bFieldHandle,
-                                                                                                   maxLoop_);
+      std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> res = performVertexFit(goodTrackMuons,
+                                                                                                         NPmu_[i],
+                                                                                                         MChargeMu_[i],
+                                                                                                         MMuMass_[i],
+                                                                                                         MMuMassErr_[i],
+                                                                                                         MMassWin_,
+                                                                                                         vProbMin_,
+                                                                                                         PMass_mu,
+                                                                                                         PMassErr_mu,
+                                                                                                         MuCharge_v_[i],
+                                                                                                         MMassMin_,
+                                                                                                         doIso_,
+                                                                                                         PIso_,
+                                                                                                         bFieldHandle,
+                                                                                                         maxLoop_);
       if (res.second.empty())
          return;
       mCandidatesMu.push_back(res.second);
@@ -636,25 +701,25 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       return;
 
    // Step 2: Fit M particles from trks
-   vector<vector<VertexFitResult>> mCandidatesTrk;
-   vector<vector<VertexFitResult>> NMC_mCandidatesTrk;
+   vector<vector<KinematicFitResult>> mCandidatesTrk;
+   vector<vector<KinematicFitResult>> NMC_mCandidatesTrk;
    for (unsigned int i = 0; i < NMtrk_; i++)
    {
-      std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> res = performVertexFit(goodTracks,
-                                                                                                   NPtrk_[i],
-                                                                                                   MChargetrk_[i],
-                                                                                                   MTrkMass_[i],
-                                                                                                   MTrkMassErr_[i],
-                                                                                                   MMassWin_,
-                                                                                                   vProbMin_,
-                                                                                                   TrkMass_v_[i],
-                                                                                                   TrkMassErr_v_[i],
-                                                                                                   TrkCharge_v_[i],
-                                                                                                   MMassMin_,
-                                                                                                   doIso_,
-                                                                                                   PIso_,
-                                                                                                   bFieldHandle,
-                                                                                                   maxLoop_);
+      std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> res = performVertexFit(goodTracks,
+                                                                                                         NPtrk_[i],
+                                                                                                         MChargetrk_[i],
+                                                                                                         MTrkMass_[i],
+                                                                                                         MTrkMassErr_[i],
+                                                                                                         MMassWin_,
+                                                                                                         vProbMin_,
+                                                                                                         TrkMass_v_[i],
+                                                                                                         TrkMassErr_v_[i],
+                                                                                                         TrkCharge_v_[i],
+                                                                                                         MMassMin_,
+                                                                                                         doIso_,
+                                                                                                         PIso_,
+                                                                                                         bFieldHandle,
+                                                                                                         maxLoop_);
       if (res.second.empty())
          return;
       mCandidatesTrk.push_back(res.second);
@@ -667,60 +732,75 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    // Sort the M candidates by M's pT
    for (auto &vec : mCandidatesMu)
    {
-      std::sort(vec.begin(), vec.end(), [](const VertexFitResult &a, const VertexFitResult &b)
-                { return a.motherP4.Pt() > b.motherP4.Pt(); });
+      std::sort(vec.begin(), vec.end(), [](const KinematicFitResult &a, const KinematicFitResult &b)
+                { return a.p4().Pt() > b.p4().Pt(); });
    }
    for (auto &vec : mCandidatesTrk)
    {
-      std::sort(vec.begin(), vec.end(), [](const VertexFitResult &a, const VertexFitResult &b)
-                { return a.motherP4.Pt() > b.motherP4.Pt(); });
+      std::sort(vec.begin(), vec.end(), [](const KinematicFitResult &a, const KinematicFitResult &b)
+                { return a.p4().Pt() > b.p4().Pt(); });
    }
-
-   // Step 2.5: Fill NMC_Scout4BTree with NMC_mCandidatesMu and NMC_mCandidatesTrk
 
    // Fill NMC M muon candidates
    for (unsigned int j = 0; j < NMmu_; j++)
    {
-      nMmucand[j] = min(int(NMC_mCandidatesMu[j].size()), 5);
+      nMmucand[j] = std::min(int(NMC_mCandidatesMu[j].size()), 5);
       for (unsigned int i = 0; i < nMmucand[j]; i++)
       {
-         NMC_mMassMu[i][j] = NMC_mCandidatesMu[j][i].motherP4.M();
-         NMC_mMassErrMu[i][j] = NMC_mCandidatesMu[j][i].massError;
-         NMC_mPtMu[i][j] = NMC_mCandidatesMu[j][i].motherP4.Pt();
-         NMC_mEtaMu[i][j] = NMC_mCandidatesMu[j][i].motherP4.Eta();
-         NMC_mPhiMu[i][j] = NMC_mCandidatesMu[j][i].motherP4.Phi();
-         NMC_mChargeMu[i][j] = NMC_mCandidatesMu[j][i].motherCharge;
+         NMC_mMassMu[i][j] = NMC_mCandidatesMu[j][i].p4().M();
+         NMC_mMassErrMu[i][j] = NMC_mCandidatesMu[j][i].massErr();
+         NMC_mPtMu[i][j] = NMC_mCandidatesMu[j][i].p4().Pt();
+         NMC_mEtaMu[i][j] = NMC_mCandidatesMu[j][i].p4().Eta();
+         NMC_mPhiMu[i][j] = NMC_mCandidatesMu[j][i].p4().Phi();
+         NMC_mChi2Mu[i][j] = NMC_mCandidatesMu[j][i].chi2() / (double)NMC_mCandidatesMu[j][i].ndof();
+         NMC_mChargeMu[i][j] = NMC_mCandidatesMu[j][i].charge_;
 
-         for (unsigned int k = 0; k < NMC_mCandidatesMu[j][i].daughterP4.size(); k++)
+         NMC_mlxyMu[i][j] = NMC_mCandidatesMu[j][i].lxy();
+         NMC_mlxyErrMu[i][j] = NMC_mCandidatesMu[j][i].lxyErr();
+         NMC_msigLxyMu[i][j] = NMC_mCandidatesMu[j][i].sigLxy();
+         NMC_malphaBSMu[i][j] = NMC_mCandidatesMu[j][i].alphaBS();
+         NMC_malphaBSErrMu[i][j] = NMC_mCandidatesMu[j][i].alphaBSErr();
+
+         // Access daughters
+         for (unsigned int k = 0; k < NMC_mCandidatesMu[j][i].number_of_daughters(); k++)
          {
-            NMC_dMassMu[i][j][k] = NMC_mCandidatesMu[j][i].daughterP4[k].M();
-            NMC_dPtMu[i][j][k] = NMC_mCandidatesMu[j][i].daughterP4[k].Pt();
-            NMC_dEtaMu[i][j][k] = NMC_mCandidatesMu[j][i].daughterP4[k].Eta();
-            NMC_dPhiMu[i][j][k] = NMC_mCandidatesMu[j][i].daughterP4[k].Phi();
-            NMC_dChargeMu[i][j][k] = NMC_mCandidatesMu[j][i].daughterCharge[k];
+            NMC_dMassMu[i][j][k] = NMC_mCandidatesMu[j][i].dau_p4(k).M();
+            NMC_dPtMu[i][j][k] = NMC_mCandidatesMu[j][i].dau_p4(k).Pt();
+            NMC_dEtaMu[i][j][k] = NMC_mCandidatesMu[j][i].dau_p4(k).Eta();
+            NMC_dPhiMu[i][j][k] = NMC_mCandidatesMu[j][i].dau_p4(k).Phi();
+            NMC_dChargeMu[i][j][k] = NMC_mCandidatesMu[j][i].dau_charge_[k];
          }
       }
    }
+
    // Fill NMC M track candidates
    for (unsigned int j = 0; j < NMtrk_; j++)
    {
-      nMtrkcand[j] = min(int(NMC_mCandidatesTrk[j].size()), 5);
+      nMtrkcand[j] = std::min(int(NMC_mCandidatesTrk[j].size()), 5);
       for (unsigned int i = 0; i < nMtrkcand[j]; i++)
       {
-         NMC_mMassTrk[i][j] = NMC_mCandidatesTrk[j][i].motherP4.M();
-         NMC_mMassErrTrk[i][j] = NMC_mCandidatesTrk[j][i].massError;
-         NMC_mPtTrk[i][j] = NMC_mCandidatesTrk[j][i].motherP4.Pt();
-         NMC_mEtaTrk[i][j] = NMC_mCandidatesTrk[j][i].motherP4.Eta();
-         NMC_mPhiTrk[i][j] = NMC_mCandidatesTrk[j][i].motherP4.Phi();
-         NMC_mChargeTrk[i][j] = NMC_mCandidatesTrk[j][i].motherCharge;
+         NMC_mMassTrk[i][j] = NMC_mCandidatesTrk[j][i].p4().M();
+         NMC_mMassErrTrk[i][j] = NMC_mCandidatesTrk[j][i].massErr();
+         NMC_mPtTrk[i][j] = NMC_mCandidatesTrk[j][i].p4().Pt();
+         NMC_mEtaTrk[i][j] = NMC_mCandidatesTrk[j][i].p4().Eta();
+         NMC_mPhiTrk[i][j] = NMC_mCandidatesTrk[j][i].p4().Phi();
+         NMC_mChi2Trk[i][j] = NMC_mCandidatesTrk[j][i].chi2() / (double)NMC_mCandidatesTrk[j][i].ndof();
+         NMC_mChargeTrk[i][j] = NMC_mCandidatesTrk[j][i].charge_;
 
-         for (unsigned int k = 0; k < NMC_mCandidatesTrk[j][i].daughterP4.size(); k++)
+         NMC_mlxyMu[i][j] = NMC_mCandidatesTrk[j][i].lxy();
+         NMC_mlxyErrMu[i][j] = NMC_mCandidatesTrk[j][i].lxyErr();
+         NMC_msigLxyMu[i][j] = NMC_mCandidatesTrk[j][i].sigLxy();
+         NMC_malphaBSMu[i][j] = NMC_mCandidatesTrk[j][i].alphaBS();
+         NMC_malphaBSErrMu[i][j] = NMC_mCandidatesTrk[j][i].alphaBSErr();
+
+         // Access daughters
+         for (unsigned int k = 0; k < NMC_mCandidatesTrk[j][i].number_of_daughters(); k++)
          {
-            NMC_dMassTrk[i][j][k] = NMC_mCandidatesTrk[j][i].daughterP4[k].M();
-            NMC_dPtTrk[i][j][k] = NMC_mCandidatesTrk[j][i].daughterP4[k].Pt();
-            NMC_dEtaTrk[i][j][k] = NMC_mCandidatesTrk[j][i].daughterP4[k].Eta();
-            NMC_dPhiTrk[i][j][k] = NMC_mCandidatesTrk[j][i].daughterP4[k].Phi();
-            NMC_dChargeTrk[i][j][k] = NMC_mCandidatesTrk[j][i].daughterCharge[k];
+            NMC_dMassTrk[i][j][k] = NMC_mCandidatesTrk[j][i].dau_p4(k).M();
+            NMC_dPtTrk[i][j][k] = NMC_mCandidatesTrk[j][i].dau_p4(k).Pt();
+            NMC_dEtaTrk[i][j][k] = NMC_mCandidatesTrk[j][i].dau_p4(k).Eta();
+            NMC_dPhiTrk[i][j][k] = NMC_mCandidatesTrk[j][i].dau_p4(k).Phi();
+            NMC_dChargeTrk[i][j][k] = NMC_mCandidatesTrk[j][i].dau_charge_[k];
          }
       }
    }
@@ -735,7 +815,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    }
 
    // Step 4: Fit X particles from both M particles
-   vector<vector<VertexFitResult>> allMCandidates;
+   vector<vector<KinematicFitResult>> allMCandidates;
    for (auto &vec : mCandidatesMu)
    {
       allMCandidates.push_back(vec);
@@ -807,6 +887,13 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       xPhi[i] = xCandidates[i].xMotherP4.Phi();
       xChi2[i] = xCandidates[i].normChi2;
       xCharge[i] = xCandidates[i].xMotherCharge;
+
+      xlxy[i] = xCandidates[i].xlxy;
+      xlxyErr[i] = xCandidates[i].xlxyErr;
+      xsigLxy[i] = xCandidates[i].xsigLxy;
+      xalphaBS[i] = xCandidates[i].xalphaBS;
+      xalphaBSErr[i] = xCandidates[i].xalphaBSErr;
+
       for (unsigned int j = 0; j < xCandidates[i].mMother.size(); j++)
       {
          mMass[i][j] = xCandidates[i].mMother[j].first.M();
@@ -815,6 +902,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
          mEta[i][j] = xCandidates[i].mMother[j].first.Eta();
          mPhi[i][j] = xCandidates[i].mMother[j].first.Phi();
          mCharge[i][j] = xCandidates[i].mMother[j].second;
+
          for (unsigned int k = 0; k < xCandidates[i].mDaughter[j].first.size(); k++)
          {
             dMass[i][j][k] = xCandidates[i].mDaughter[j].first[k].M();
@@ -885,7 +973,213 @@ UInt_t Scout4BRecoSecondaryVertexAnalyzer::getTriggerBits(const edm::Event &iEve
    return trigger;
 }
 
-std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> Scout4BRecoSecondaryVertexAnalyzer::performVertexFit(
+float Scout4BRecoSecondaryVertexAnalyzer::distanceOfClosestApproach(const reco::Track *track1, const reco::Track *track2, const MagneticField &bFieldHandle)
+{
+   TwoTrackMinimumDistance md;
+   const reco::TransientTrack tt1(*track1, &bFieldHandle);
+   const reco::TransientTrack tt2(*track2, &bFieldHandle);
+   if (not md.calculate(tt1.initialFreeState(), tt2.initialFreeState()))
+      return -1.0;
+   return md.distance();
+}
+
+Measurement1D Scout4BRecoSecondaryVertexAnalyzer::distanceOfClosestApproach(const reco::Track *track, const reco::Vertex &vertex, const MagneticField &bFieldHandle)
+{
+   VertexDistance3D distance3D;
+   const reco::TransientTrack tt(*track, &bFieldHandle);
+   assert(impactPointExtrapolator);
+   auto tsos = impactPointExtrapolator->extrapolate(tt.initialFreeState(), GlobalPoint(Basic3DVector<float>(vertex.position())));
+   if (not tsos.isValid())
+      return Measurement1D(-1.0, -1.0);
+   Measurement1D doca = distance3D.distance(VertexState(tsos.globalPosition(), tsos.cartesianError().position()), vertex);
+   return doca;
+}
+
+KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::KinematicFitter(std::vector<reco::Track *> trks, std::vector<double> masses, const MagneticField &bFieldHandle)
+{
+   // https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideKinematicVertexFit
+   if (trks.size() != masses.size())
+      throw cms::Exception("Error") << "number of tracks and number of masses should match";
+
+   std::vector<reco::TransientTrack> transTrks;
+
+   KinematicParticleFactoryFromTransientTrack factory;
+   KinematicParticleVertexFitter fitter;
+
+   std::vector<RefCountedKinematicParticle> particles;
+   double chi = 0.;
+   double ndf = 0.;
+   for (unsigned int i = 0; i < trks.size(); ++i)
+   {
+      const reco::TransientTrack tt(*trks[i], &bFieldHandle);
+      transTrks.push_back(tt);
+      float mass = masses[i];
+      float massErr = mass / 1000.0;
+      particles.push_back(factory.particle(transTrks.back(), mass, chi, ndf, massErr));
+   }
+
+   RefCountedKinematicTree vertexFitTree;
+   KinematicFitResult result;
+   result.tracks = trks;
+   try
+   {
+      vertexFitTree = fitter.fit(particles);
+   }
+   catch (const std::exception &e)
+   {
+      return result;
+   }
+   result.set_tree(vertexFitTree);
+   return result;
+}
+
+KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::MCKinematicFitter(std::vector<reco::Track *> trks, std::vector<double> masses, double MMass, double MMassErr, const MagneticField &bFieldHandle)
+{
+   // https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideKinematicVertexFit
+   if (trks.size() != masses.size())
+      throw cms::Exception("Error") << "number of tracks and number of masses should match";
+
+   std::vector<reco::TransientTrack> transTrks;
+
+   KinematicParticleFactoryFromTransientTrack factory;
+   KinematicParticleVertexFitter fitter;
+   KinematicParticleFitter MCfitter;
+   MassKinematicConstraint massConstraint(MMass, MMassErr);
+
+   std::vector<RefCountedKinematicParticle> particles;
+   double chi = 0.;
+   double ndf = 0.;
+   for (unsigned int i = 0; i < trks.size(); ++i)
+   {
+      const reco::TransientTrack tt(*trks[i], &bFieldHandle);
+      transTrks.push_back(tt);
+      float mass = masses[i];
+      float massErr = mass / 1000.0;
+      particles.push_back(factory.particle(transTrks.back(), mass, chi, ndf, massErr));
+   }
+
+   RefCountedKinematicTree vertexFitTree;
+   RefCountedKinematicTree constrainedTree;
+   KinematicFitResult result;
+   result.tracks = trks;
+   try
+   {
+      vertexFitTree = fitter.fit(particles);
+   }
+   catch (const std::exception &e)
+   {
+      return result;
+   }
+
+   if (vertexFitTree->isValid())
+   {
+      try
+      {
+         constrainedTree = MCfitter.fit(&massConstraint, vertexFitTree);
+      }
+      catch (const std::exception &e)
+      {
+         return result;
+      }
+   }
+   else
+   {
+      return result;
+   }
+
+   result.set_tree(constrainedTree);
+   return result;
+}
+
+Scout4B::Displacements Scout4BRecoSecondaryVertexAnalyzer::compute3dDisplacement(const KinematicFitResult &fit, bool closestIn3D)
+{
+   // WARNING: all variables need to be filled for even if the fit is not valid
+
+   Scout4B::Displacements result;
+
+   const reco::Vertex *bestVertex(0);
+   int bestVertexIndex(-1);
+   const reco::Vertex *bestVertex2(0);
+   int bestVertexIndex2(-1);
+
+   if (fit.valid())
+   {
+
+      // const auto& vertices = *pvHandle_.product();
+
+      auto candTransientTrack = fit.particle()->refittedTransientTrack();
+
+      // find best matching primary vertex
+      double minDistance(999.);
+      for (unsigned int i = 0; i < vertices_.size(); ++i)
+      {
+         const auto &vertex = vertices_.at(i);
+         if (closestIn3D)
+         {
+            auto impactParameter3D = IPTools::absoluteImpactParameter3D(candTransientTrack, vertex);
+            if (impactParameter3D.first and impactParameter3D.second.value() < minDistance)
+            {
+               minDistance = impactParameter3D.second.value();
+               bestVertex = &vertex;
+               bestVertexIndex = i;
+            }
+         }
+         else
+         {
+            auto impactParameterZ = IPTools::signedDecayLength3D(candTransientTrack, GlobalVector(0, 0, 1), vertex);
+            double distance = fabs(impactParameterZ.second.value());
+            if (impactParameterZ.first and distance < minDistance)
+            {
+               minDistance = distance;
+               bestVertex = &vertex;
+               bestVertexIndex = i;
+            }
+         }
+      }
+
+      // find second best vertex
+      double minDistance2(999.);
+      for (unsigned int i = 0; i < vertices_.size(); ++i)
+      {
+         const auto &vertex = vertices_.at(i);
+         if (closestIn3D)
+         {
+            auto impactParameter3D = IPTools::absoluteImpactParameter3D(candTransientTrack, vertex);
+            if (impactParameter3D.first and impactParameter3D.second.value() < minDistance2 and impactParameter3D.second.value() > minDistance)
+            {
+               minDistance2 = impactParameter3D.second.value();
+               bestVertex2 = &vertex;
+               bestVertexIndex2 = i;
+            }
+         }
+         else
+         {
+            auto impactParameterZ = IPTools::signedDecayLength3D(candTransientTrack, GlobalVector(0, 0, 1), vertex);
+            double distance = fabs(impactParameterZ.second.value());
+            if (impactParameterZ.first and distance < minDistance2 and distance > minDistance)
+            {
+               minDistance2 = distance;
+               bestVertex2 = &vertex;
+               bestVertexIndex2 = i;
+            }
+         }
+      }
+   }
+
+   if (bestVertex)
+      result.push_back(Scout4B::Displacement("pv", fit, *bestVertex, bestVertexIndex));
+   else
+      result.push_back(Scout4B::Displacement("pv"));
+
+   if (bestVertex2)
+      result.push_back(Scout4B::Displacement("_pv2", fit, *bestVertex2, bestVertexIndex2));
+   else
+      result.push_back(Scout4B::Displacement("_pv2"));
+
+   return result;
+}
+
+std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scout4BRecoSecondaryVertexAnalyzer::performVertexFit(
     std::vector<reco::Track> tracks,
     unsigned int NP,
     int MCharge,
@@ -904,11 +1198,11 @@ std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> Scout4BRec
 {
    if (PMass.size() != NP || PMassErr.size() != NP || tracks.size() < NP || std::abs(MCharge) > int(NP))
    {
-      return std::make_pair(std::vector<VertexFitResult>(), std::vector<VertexFitResult>());
+      return std::make_pair(std::vector<KinematicFitResult>(), std::vector<KinematicFitResult>());
    }
 
-   std::vector<VertexFitResult> unconstrainedCandidates;
-   std::vector<VertexFitResult> massConstrainedCandidates;
+   std::vector<KinematicFitResult> unconstrainedCandidates;
+   std::vector<KinematicFitResult> massConstrainedCandidates;
 
    std::vector<reco::Track> &trackVec = tracks;
    unsigned int nTracks = trackVec.size();
@@ -963,261 +1257,50 @@ std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> Scout4BRec
          }
       }
 
-      std::vector<RefCountedKinematicParticle> particles;
       if (process)
       {
-         KinematicParticleFactoryFromTransientTrack particleFactory;
-         float chi = 0.0;
-         float ndf = 0.0;
-         bool particleError = false;
-         for (unsigned int i = 0; i < NP && !particleError; ++i)
-         {
-            const reco::Track &trk = trackVec[indices[i]];
-            TransientTrack tTrk(trk, &bFieldHandle);
-            try
-            {
-               ParticleMass PMassTmp = PMass[i];
-               float PMassErrTmp = PMassErr[i];
-               RefCountedKinematicParticle particle = particleFactory.particle(tTrk, PMassTmp, chi, ndf, PMassErrTmp);
-               particles.push_back(particle);
-            }
-            catch (std::exception &e)
-            {
-               particleError = true;
-            }
-         }
-         if (particleError || particles.size() != NP)
+         double doca = distanceOfClosestApproach(&trackVec[indices[0]], &trackVec[indices[1]], bFieldHandle);
+         if (doca > 0.05)
          {
             process = false;
          }
       }
 
-      RefCountedKinematicTree vertexFitTree;
-      if (process)
+      KinematicFitResult resultUnconstrained;
+      KinematicFitResult resultConstrained;
+
+      std::vector<reco::Track *> trackPointers;
+      for (unsigned int i = 0; i < NP && process; ++i)
       {
-         KinematicParticleVertexFitter vertexFitter;
-         try
-         {
-            vertexFitTree = vertexFitter.fit(particles);
-         }
-         catch (std::exception &e)
-         {
-            process = false;
-         }
-         if (process)
-         {
-            if (!vertexFitTree->isValid())
-            {
-               process = false;
-            }
-         }
+         trackPointers.push_back(&trackVec[indices[i]]);
+         resultUnconstrained.trackIndices.push_back(indices[i]);
+         resultConstrained.trackIndices.push_back(indices[i]);
       }
 
       if (process)
       {
-         vertexFitTree->movePointerToTheTop();
-         RefCountedKinematicParticle motherParticle = vertexFitTree->currentParticle();
-         RefCountedKinematicVertex vertex = vertexFitTree->currentDecayVertex();
-         double vProb = -1;
-         double fittedMass = -999;
+         // Use KinematicFitter for unconstrained fit
+         resultUnconstrained = KinematicFitter(trackPointers, PMass, bFieldHandle);
 
-         if (!motherParticle->currentState().isValid() || !vertex->vertexIsValid())
+         if (resultUnconstrained.valid())
          {
-            process = false;
-         }
+            resultUnconstrained.charge_ = MCharge;
+            resultUnconstrained.dau_charge_ = PCharge;
 
-         if (process && (vertex->chiSquared() < 0 || vertex->degreesOfFreedom() <= 0 || vertex->chiSquared() > 9999.9))
-         {
-            process = false;
-         }
-         else
-         {
-            vProb = ChiSquaredProbability(vertex->chiSquared(), vertex->degreesOfFreedom());
-         }
-         if (process && vProb < vProbMin)
-         {
-            process = false;
-         }
-         else
-         {
-            fittedMass = motherParticle->currentState().mass();
-         }
-         if (process && (fittedMass < MMassMin || std::fabs(fittedMass - MMass) > MassWin))
-         {
-            process = false;
-         }
-
-         if (process && motherParticle->currentState().kinematicParametersError().matrix()(6, 6) < 0)
-         {
-            process = false;
-         }
-         double sigma = process ? std::sqrt(motherParticle->currentState().kinematicParametersError().matrix()(6, 6)) : 999;
-
-         if (process)
-         {
-            VertexFitResult resultUnconstrained;
-            std::vector<TLorentzVector> daughtersP4;
-            std::vector<int> daughtersCharge;
-            bool daughtersValid = true;
-
-            vertexFitTree->movePointerToTheFirstChild();
-            for (unsigned int i = 0; i < NP && daughtersValid; ++i)
+            if (std::abs(resultUnconstrained.p4().M() - MMass) < MassWin && resultUnconstrained.vtxProb() > vProbMin && resultUnconstrained.p4().M() > MMassMin && abs(resultUnconstrained.p4().M() - MMass) < 3.0 * resultUnconstrained.massErr())
             {
-               RefCountedKinematicParticle daughter = vertexFitTree->currentParticle();
-               if (!daughter->currentState().isValid())
-               {
-                  daughtersValid = false;
-               }
-               else
-               {
-                  auto par = daughter->currentState().kinematicParameters();
-                  TVector3 momentum(par.momentum().x(), par.momentum().y(), par.momentum().z());
-                  double energy = std::sqrt(momentum.Mag2() + daughter->currentState().mass() * daughter->currentState().mass());
-                  TLorentzVector p4;
-                  p4.SetPxPyPzE(momentum.x(), momentum.y(), momentum.z(), energy);
-                  daughtersP4.push_back(p4);
-                  // Store charge from track
-                  daughtersCharge.push_back(trackVec[indices[i]].charge());
-               }
-               if (i < NP - 1)
-               {
-                  vertexFitTree->movePointerToTheNextChild();
-               }
-            }
-
-            if (daughtersValid)
-            {
-               resultUnconstrained.daughterP4 = daughtersP4;
-               resultUnconstrained.daughterCharge = daughtersCharge;
-
-               auto par = motherParticle->currentState().kinematicParameters();
-               TVector3 momentum(par.momentum().x(), par.momentum().y(), par.momentum().z());
-               double energy = std::sqrt(momentum.Mag2() + fittedMass * fittedMass);
-               TLorentzVector p4;
-               p4.SetPxPyPzE(momentum.x(), momentum.y(), momentum.z(), energy);
-               resultUnconstrained.motherP4 = p4;
-               // Calculate charge from track
-               resultUnconstrained.motherCharge = MCharge;
-               resultUnconstrained.massError = sigma;
-               resultUnconstrained.normChi2 = vertex->chiSquared() / (double)vertex->degreesOfFreedom();
-
+               resultUnconstrained.postprocess(*beamSpot_);
+               auto displacements = compute3dDisplacement(resultUnconstrained);
                unconstrainedCandidates.push_back(resultUnconstrained);
 
-               if (std::fabs(fittedMass - MMass) < 3 * sigma)
+               // Use MCKinematicFitter for mass-constrained fit
+               resultConstrained = MCKinematicFitter(trackPointers, PMass, MMass, MMassErr, bFieldHandle);
+
+               if (resultConstrained.valid())
                {
-                  bool mcProcess = true;
-                  MassKinematicConstraint massConstraint(MMass, MMassErr);
-                  KinematicParticleVertexFitter massConstraintFitter;
-                  RefCountedKinematicTree constrainedTree;
-
-                  if (mcProcess)
-                  {
-                     try
-                     {
-                        constrainedTree = massConstraintFitter.fit(particles);
-                     }
-                     catch (std::exception &e)
-                     {
-                        mcProcess = false;
-                     }
-                  }
-
-                  if (mcProcess && !constrainedTree->isValid())
-                  {
-                     mcProcess = false;
-                  }
-
-                  KinematicParticleFitter csFitter;
-                  if (mcProcess)
-                  {
-                     try
-                     {
-                        constrainedTree = csFitter.fit(&massConstraint, constrainedTree);
-                     }
-                     catch (std::exception &e)
-                     {
-                        mcProcess = false;
-                     }
-                  }
-
-                  if (mcProcess && !constrainedTree->isValid())
-                  {
-                     mcProcess = false;
-                  }
-
-                  if (mcProcess)
-                  {
-                     constrainedTree->movePointerToTheTop();
-                     RefCountedKinematicParticle motherParticleMC = constrainedTree->currentParticle();
-                     RefCountedKinematicVertex vertexMC = constrainedTree->currentDecayVertex();
-
-                     if (!motherParticleMC->currentState().isValid() || !vertexMC->vertexIsValid())
-                     {
-                        mcProcess = false;
-                     }
-
-                     if (mcProcess && (vertexMC->chiSquared() < 0 || vertexMC->degreesOfFreedom() <= 0 || vertexMC->chiSquared() > 9999.9))
-                     {
-                        mcProcess = false;
-                     }
-
-                     double vProbMC = ChiSquaredProbability(vertexMC->chiSquared(), vertexMC->degreesOfFreedom());
-                     if (mcProcess && vProbMC < vProbMin)
-                     {
-                        mcProcess = false;
-                     }
-
-                     if (mcProcess)
-                     {
-                        VertexFitResult resultConstrained;
-                        std::vector<TLorentzVector> daughtersP4MC;
-                        std::vector<int> daughtersChargeMC;
-                        bool mcDaughtersValid = true;
-
-                        constrainedTree->movePointerToTheFirstChild();
-                        for (unsigned int i = 0; i < NP && mcDaughtersValid; ++i)
-                        {
-                           RefCountedKinematicParticle daughter = constrainedTree->currentParticle();
-                           if (!daughter->currentState().isValid())
-                           {
-                              mcDaughtersValid = false;
-                           }
-                           else
-                           {
-                              auto par = daughter->currentState().kinematicParameters();
-                              TVector3 momentum(par.momentum().x(), par.momentum().y(), par.momentum().z());
-                              double energy = std::sqrt(momentum.Mag2() + daughter->currentState().mass() * daughter->currentState().mass());
-                              TLorentzVector p4;
-                              p4.SetPxPyPzE(momentum.x(), momentum.y(), momentum.z(), energy);
-                              daughtersP4MC.push_back(p4);
-                              daughtersChargeMC.push_back(trackVec[indices[i]].charge());
-                           }
-                           if (i < NP - 1)
-                           {
-                              constrainedTree->movePointerToTheNextChild();
-                           }
-                        }
-
-                        if (mcDaughtersValid)
-                        {
-                           resultConstrained.daughterP4 = daughtersP4MC;
-                           resultConstrained.daughterCharge = daughtersChargeMC;
-
-                           auto parMC = motherParticleMC->currentState().kinematicParameters();
-                           TVector3 momentumMC(parMC.momentum().x(), parMC.momentum().y(), parMC.momentum().z());
-                           double energyMC = std::sqrt(momentumMC.Mag2() + MMass * MMass);
-                           TLorentzVector p4MC;
-                           p4MC.SetPxPyPzE(momentumMC.x(), momentumMC.y(), momentumMC.z(), energyMC);
-                           resultConstrained.motherP4 = p4MC;
-                           resultConstrained.motherCharge = MCharge;
-                           resultConstrained.massError = std::sqrt(motherParticleMC->currentState().kinematicParametersError().matrix()(6, 6));
-                           resultConstrained.normChi2 = vertexMC->chiSquared() / (double)vertexMC->degreesOfFreedom();
-                           resultConstrained.trackIndices = indices;
-
-                           massConstrainedCandidates.push_back(resultConstrained);
-                        }
-                     }
-                  }
+                  resultConstrained.charge_ = MCharge;
+                  resultConstrained.dau_charge_ = PCharge;
+                  massConstrainedCandidates.push_back(resultConstrained);
                }
             }
          }
@@ -1247,7 +1330,7 @@ std::pair<std::vector<VertexFitResult>, std::vector<VertexFitResult>> Scout4BRec
 std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
     std::vector<reco::Track> tracks,
     unsigned int NM,
-    const std::vector<std::vector<VertexFitResult>> &vertexs,
+    const std::vector<std::vector<KinematicFitResult>> &vertexs,
     int XCharge,
     double XMass,
     double XMassWin,
@@ -1260,7 +1343,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
     const MagneticField &bFieldHandle,
     const unsigned long long max_loop)
 {
-   // 输入检查：MMass、MMassErr大小、电荷要求，以及vertexs至少包含NM个组
+   // Input checks
    if (MMass.size() != NM || MMassErr.size() != NM || std::abs(XCharge) > int(NM) || vertexs.size() < NM)
    {
       return std::vector<XFitResult>();
@@ -1271,7 +1354,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
 
    std::vector<XFitResult> xCandidates;
 
-   // 使用 candIndices 实现各组内候选的笛卡尔组合，vertexs[i]对应第 i 个 M组
+   // Cartesian product over each vertex group
    std::vector<unsigned int> candIndices(NM, 0);
    unsigned long long candLoopCounter = 0;
    bool doneCandidates = false;
@@ -1282,8 +1365,8 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
       candLoopCounter++;
 
       bool processCandidate = true;
-      std::vector<VertexFitResult> selectedM;
-      // 从每个 M组中选取一个候选
+      std::vector<KinematicFitResult> selectedM;
+      // Select one candidate from each group
       for (unsigned int i = 0; i < NM; ++i)
       {
          if (i >= vertexs.size() || vertexs[i].empty() || candIndices[i] >= vertexs[i].size())
@@ -1296,19 +1379,19 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
       if (processCandidate && selectedM.size() != NM)
          processCandidate = false;
 
-      // 检查电荷和
+      // Check charge sum
       if (processCandidate)
       {
          int sumCharge = 0;
          for (unsigned int i = 0; i < NM; ++i)
          {
-            sumCharge += selectedM[i].motherCharge;
+            sumCharge += selectedM[i].charge_;
          }
          if (sumCharge != XCharge)
             processCandidate = false;
       }
 
-      // 检查各候选中的 track 索引是否重复
+      // Check for duplicate track indices
       if (processCandidate)
       {
          std::set<unsigned int> allTrackIndices;
@@ -1329,13 +1412,14 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
             processCandidate = false;
       }
 
-      // 隔离检查（若要求隔离）
-      if (processCandidate && doIso)
+      // Check ISO and doca between any 2 tracks
+      if (processCandidate)
       {
          bool isoFail = false;
-         for (unsigned int i = 0; i < NM && !isoFail; ++i)
+         bool docaFail = false;
+         for (unsigned int i = 0; i < NM && docaFail; ++i)
          {
-            for (unsigned int j = i + 1; j < NM && !isoFail; ++j)
+            for (unsigned int j = i + 1; j < NM && docaFail; ++j)
             {
                for (auto idx1 : selectedM[i].trackIndices)
                {
@@ -1346,36 +1430,38 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
                         isoFail = true;
                         break;
                      }
+                     double doca = distanceOfClosestApproach(&trackVec[idx1], &trackVec[idx2], bFieldHandle);
+                     if (doca > 0.05)
+                     {
+                        docaFail = true;
+                        break;
+                     }
                   }
                }
             }
          }
-         if (isoFail)
+         if (isoFail && doIso)
             processCandidate = false;
       }
 
-      // 对每个 M候选进行质量约束拟合（利用两步拟合过程）
+      // Apply mass constraint fitting for each M candidate
       bool massConstraintSuccess = true;
       std::vector<std::pair<std::vector<TLorentzVector>, std::vector<int>>> mDaughter_result;
       std::vector<std::pair<TLorentzVector, int>> mMother_result;
       std::vector<double> mMassErr_result;
       std::vector<std::vector<unsigned int>> mTrackIndices_result;
-      // 保存经过质量约束拟合得到的 M 母粒子，用于 X 顶点拟合
       std::vector<RefCountedKinematicParticle> fittedMParticles;
+      KinematicFitResult mKinematicFitResult;
+      XFitResult xResult;
 
       for (unsigned int i = 0; i < NM && massConstraintSuccess && processCandidate; ++i)
       {
-         const VertexFitResult &mCandidate = selectedM[i];
-         if (mCandidate.daughterP4.size() != mCandidate.trackIndices.size())
-         {
-            massConstraintSuccess = false;
-            break;
-         }
-         std::vector<RefCountedKinematicParticle> particles;
-         KinematicParticleFactoryFromTransientTrack particleFactory;
-         float chi = 0.0, ndf = 0.0;
-         // 构造每个子粒子（初始构造仅用于拟合，后续参数均取自拟合结果）
-         for (unsigned int j = 0; j < mCandidate.daughterP4.size() && massConstraintSuccess; ++j)
+         const KinematicFitResult &mCandidate = selectedM[i];
+
+         std::vector<double> parMasses;
+         std::vector<reco::Track *> parTracks;
+         // Construct each daughter particle (initially used for fitting)
+         for (unsigned int j = 0; j < mCandidate.trackIndices.size() && massConstraintSuccess; ++j)
          {
             unsigned int trackIdx = mCandidate.trackIndices[j];
             if (trackIdx >= trackVec.size())
@@ -1383,65 +1469,40 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
                massConstraintSuccess = false;
                break;
             }
-            const reco::Track &trk = trackVec[trackIdx];
-            TransientTrack tt(trk, &bFieldHandle);
-            double massVal = mCandidate.daughterP4[j].M();
-            double massErr = massVal / 1000.0;
-            try
-            {
-               ParticleMass PMassTmp = massVal;
-               float PMassErrTmp = massErr;
-               RefCountedKinematicParticle particle = particleFactory.particle(tt, PMassTmp, chi, ndf, PMassErrTmp);
-               particles.push_back(particle);
-            }
-            catch (const std::exception &e)
-            {
-               massConstraintSuccess = false;
-               break;
-            }
+            parMasses.push_back(mCandidate.dau_p4(j).M());
+            parTracks.push_back(&trackVec[trackIdx]);
          }
-         if (!massConstraintSuccess || particles.size() != mCandidate.daughterP4.size())
+
+         if (!massConstraintSuccess)
          {
-            massConstraintSuccess = false;
             break;
          }
 
-         // 对该 M候选施加质量约束：先利用 KinematicParticleVertexFitter 拟合，再用 KinematicParticleFitter 加约束
+         // Use MCKinematicFitter to apply mass constraint
          RefCountedKinematicTree constrainedTree;
          bool mcProcess = true;
          {
-            MassKinematicConstraint massConstraint(MMass[i], MMassErr[i]);
-            KinematicParticleVertexFitter massConstraintFitter;
-            
             try
             {
-               constrainedTree = massConstraintFitter.fit(particles);
+               mKinematicFitResult = MCKinematicFitter(parTracks, parMasses, MMass[i], MMassErr[i], bFieldHandle);
             }
             catch (const std::exception &e)
             {
                mcProcess = false;
             }
-            if (mcProcess && (!constrainedTree || !constrainedTree->isValid()))
-               mcProcess = false;
-
-            KinematicParticleFitter csFitter;
             if (mcProcess)
             {
-               try
-               {
-                  constrainedTree = csFitter.fit(&massConstraint, constrainedTree);
-               }
-               catch (const std::exception &e)
-               {
-                  mcProcess = false;
-               }
+               constrainedTree = mKinematicFitResult.tree();
+               mKinematicFitResult.postprocess(*beamSpot_);
             }
             if (mcProcess && (!constrainedTree || !constrainedTree->isValid()))
                mcProcess = false;
 
-            if (mcProcess)
+            constrainedTree->movePointerToTheTop();
+            RefCountedKinematicParticle mMotherParticle = constrainedTree->currentParticle();
+            if (mMotherParticle->currentState().kinematicParametersError().matrix()(6, 6) < 0)
             {
-               constrainedTree->movePointerToTheTop();
+               mcProcess = false;
             }
          }
          if (!mcProcess)
@@ -1450,7 +1511,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
             break;
          }
 
-         // 对 constrainedTree 进行合法性检查
+         // Check the validity of the constrained tree
          double vProbMC = -1;
          constrainedTree->movePointerToTheTop();
          RefCountedKinematicParticle mMotherParticleMC = constrainedTree->currentParticle();
@@ -1472,10 +1533,10 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
             break;
          }
 
-         // 提取子粒子信息（均采用拟合后新参数）
+         // Extract daughter particle information
          std::vector<TLorentzVector> fittedDaughters;
          constrainedTree->movePointerToTheFirstChild();
-         for (unsigned int j = 0; j < mCandidate.daughterP4.size(); ++j)
+         for (unsigned int j = 0; j < mCandidate.trackIndices.size(); ++j)
          {
             RefCountedKinematicParticle fittedParticle = constrainedTree->currentParticle();
             if (!fittedParticle->currentState().isValid())
@@ -1491,7 +1552,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
             TLorentzVector p4;
             p4.SetPxPyPzE(mom.x(), mom.y(), mom.z(), energy);
             fittedDaughters.push_back(p4);
-            if (j < mCandidate.daughterP4.size() - 1)
+            if (j < mCandidate.trackIndices.size() - 1)
                constrainedTree->movePointerToTheNextChild();
          }
          if (fittedDaughters.empty())
@@ -1499,42 +1560,23 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
             massConstraintSuccess = false;
             break;
          }
-         mDaughter_result.push_back(std::make_pair(fittedDaughters, mCandidate.daughterCharge));
+         mDaughter_result.push_back(std::make_pair(fittedDaughters, mCandidate.dau_charge_));
          auto mPar = mMotherParticleMC->currentState().kinematicParameters();
          TVector3 mMom(mPar.momentum().x(), mPar.momentum().y(), mPar.momentum().z());
          double mEnergy = std::sqrt(mMom.Mag2() + mMotherParticleMC->currentState().mass() * mMotherParticleMC->currentState().mass());
          TLorentzVector mP4;
          mP4.SetPxPyPzE(mMom.x(), mMom.y(), mMom.z(), mEnergy);
-         mMother_result.push_back(std::make_pair(mP4, mCandidate.motherCharge));
+         mMother_result.push_back(std::make_pair(mP4, mCandidate.charge_));
          mMassErr_result.push_back(std::sqrt(mMotherParticleMC->currentState().kinematicParametersError().matrix()(6, 6)));
          mTrackIndices_result.push_back(mCandidate.trackIndices);
 
          constrainedTree->movePointerToTheTop();
          RefCountedKinematicParticle constrainedM = constrainedTree->currentParticle();
          fittedMParticles.push_back(constrainedM);
-      } // end for 每个 M候选
+      }
 
-      /*if (massConstraintSuccess && processCandidate)
-      {
-         cout << "7" << endl;
-         // Print out the fitted M particles
-         for (unsigned int i = 0; i < NM; i++)
-         {
-            cout << "M" << i << " mass: " << mMother_result[i].first.M() << " charge: " << mMother_result[i].second << endl;
-         }
-         // Print daughters of the fitted M particles
-         for (unsigned int i = 0; i < NM; i++)
-         {
-            for (unsigned int j = 0; j < mDaughter_result[i].first.size(); j++)
-            {
-               cout << "M" << i << " daughter " << j << " mass: " << mDaughter_result[i].first[j].M() << " charge: " << mDaughter_result[i].second[j] << endl;
-            }
-         }
-      }*/
-
-      // 第三阶段：如果所有 M候选均成功，则用新拟合得到的 M母粒子进行 X级顶点拟合
+      // Use new fitted M particles for X-level vertex fitting
       bool xVertexSuccess = true;
-      XFitResult xResult;
       if (processCandidate && massConstraintSuccess)
       {
          RefCountedKinematicTree xVertexFitTree;
@@ -1563,28 +1605,30 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
                TLorentzVector xP4;
                xP4.SetPxPyPzE(mom.x(), mom.y(), mom.z(), energy);
 
-               // Check the M particle mass from the X fit
-               /*xVertexFitTree->movePointerToTheFirstChild();
-               RefCountedKinematicParticle mParticle = xVertexFitTree->currentParticle();
-               cout << "X fit M mass: " << mParticle->currentState().mass() << endl;
-               cout << "M mass:       " << mMother_result[0].first.M() << endl;*/
-
+               // Fill XFitResult
                xResult.mDaughter = mDaughter_result;
                xResult.mMother = mMother_result;
                xResult.xMotherP4 = xP4;
                xResult.xMotherCharge = XCharge;
                xResult.xMassError = std::sqrt(xMotherParticle->currentState().kinematicParametersError().matrix()(6, 6));
                xResult.normChi2 = xVertex->chiSquared() / (double)xVertex->degreesOfFreedom();
-               xResult.mCandidateIndices = candIndices;
+               xResult.mIndices = candIndices;
                xResult.mTrackIndices = mTrackIndices_result;
-               xResult.mMassError = mMassErr_result;
+               if (mKinematicFitResult.valid())
+               {
+                  xResult.xlxy = mKinematicFitResult.lxy();
+                  xResult.xlxyErr = mKinematicFitResult.lxyErr();
+                  xResult.xsigLxy = mKinematicFitResult.sigLxy();
+                  xResult.xalphaBS = mKinematicFitResult.alphaBS();
+                  xResult.xalphaBSErr = mKinematicFitResult.alphaBSErr();
+               }
                xVertexSuccess = true;
                xCandidates.push_back(xResult);
             }
          }
       }
 
-      // 生成下一个候选组合（多维笛卡尔组合遍历）
+      // Generate next combination of candidates
       int posCand = NM - 1;
       while (posCand >= 0 && candIndices[posCand] == vertexs[posCand].size() - 1)
          posCand--;
@@ -1596,7 +1640,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
          for (unsigned int j = posCand + 1; j < NM; j++)
             candIndices[j] = 0;
       }
-   } // end while candidates
+   }
 
    return xCandidates;
 }
@@ -1617,14 +1661,21 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
       xPhi[i] = 0;
       xChi2[i] = 0;
       xCharge[i] = 0;
+
+      xlxy[i] = 0;
+      xlxyErr[i] = 0;
+      xsigLxy[i] = 0;
+      xalphaBS[i] = 0;
+      xalphaBSErr[i] = 0;
       for (unsigned int j = 0; j < 4; j++)
       {
          mMass[i][j] = 0;
          mMassError[i][j] = 0;
+         mNMCMass[i][j] = 0;
+         mNMCMassError[i][j] = 0;
          mPt[i][j] = 0;
          mEta[i][j] = 0;
          mPhi[i][j] = 0;
-         mChi2[i][j] = 0;
          mCharge[i][j] = 0;
 
          NMC_mMassMu[i][j] = 0;
@@ -1641,6 +1692,19 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
          NMC_mChi2Trk[i][j] = 0;
          NMC_mChargeMu[i][j] = 0;
          NMC_mChargeTrk[i][j] = 0;
+         NMC_mChi2Mu[i][j] = 0;
+         NMC_mChi2Trk[i][j] = 0;
+
+         NMC_mlxyMu[i][j] = 0;
+         NMC_mlxyErrMu[i][j] = 0;
+         NMC_msigLxyMu[i][j] = 0;
+         NMC_malphaBSMu[i][j] = 0;
+         NMC_malphaBSErrMu[i][j] = 0;
+         NMC_mlxyTrk[i][j] = 0;
+         NMC_mlxyErrTrk[i][j] = 0;
+         NMC_msigLxyTrk[i][j] = 0;
+         NMC_malphaBSTrk[i][j] = 0;
+         NMC_malphaBSErrTrk[i][j] = 0;
 
          nMmucand[j] = 0;
          nMtrkcand[j] = 0;
@@ -1681,6 +1745,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::fillDescriptions(edm::ConfigurationDesc
    desc.addUntracked<bool>("multiM", false);
    desc.add<edm::InputTag>("recoTrackMuon", edm::InputTag("recoTrackMuon"));
    desc.add<edm::InputTag>("recoTrack", edm::InputTag("recoTrack"));
+   desc.add<edm::InputTag>("recoVertex", edm::InputTag("recoVertex"));
    desc.add<edm::InputTag>("TriggerResults");
    desc.add<std::vector<std::string>>("FilterNames");
    desc.add<std::vector<double>>("MMuMass");
@@ -1710,6 +1775,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::fillDescriptions(edm::ConfigurationDesc
    desc.addUntracked<unsigned long long>("maxLoop", 1000000000);
    desc.addUntracked<double>("MMassMin", 1e-2);
    desc.addUntracked<double>("XMassMin", 1e-2);
+   desc.add<edm::InputTag>("beamSpot", edm::InputTag("beamSpot"));
 
    descriptions.add("Scout4BRecoSecondaryVertexAnalyzer", desc);
 }

@@ -11,7 +11,14 @@
 <use name="CommonTools/UtilAlgos"/>
 <use name="CommonTools/CandAlgos"/>
 <use name="PhysicsTools/NanoAOD"/>
-<use name="Configuration/Eras"/>
+<use name="xgboost"/>
+<use name="DataFormats/EgammaCandidates"/>
+<use name="TrackingTools/TrajectoryState"/>
+<use name="MagneticField/Engine"/>
+<use name="RecoVertex/KinematicFitPrimitives"/>
+<use name="RecoVertex/KinematicFit"/>
+<use name="TrackingTools/IPTools"/>
+<use name="clhep"/>
 <export>
   <lib name="1"/>
 </export>

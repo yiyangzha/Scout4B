@@ -866,6 +866,8 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
          NMC_mlTrk[i][j] = NMC_mCandidatesTrk[j][i].l();
          NMC_mlErrTrk[i][j] = NMC_mCandidatesTrk[j][i].lErr();
          NMC_msigLxyTrk[i][j] = NMC_mCandidatesTrk[j][i].sigLxy();
+         NMC_msigLzTrk[i][j] = NMC_mCandidatesTrk[j][i].sigLz();
+         NMC_msigLTrk[i][j] = NMC_mCandidatesTrk[j][i].sigL();
          NMC_malphaBSTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBS();
          NMC_malphaBSErrTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBSErr();
          NMC_malphaBSXYTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBSXY();

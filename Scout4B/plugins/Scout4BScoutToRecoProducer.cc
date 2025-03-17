@@ -59,14 +59,14 @@ public:
    reco::Vertex createVertex(Run3ScoutingVertex const &scoutingVertex);
    reco::Muon createMuon(Run3ScoutingMuon const &scoutingMuon);
 
-   void buildHitPattern(Run3ScoutingMuon const &scoutingMuon, Run3ScoutingTrack const &scoutingTrack, reco::Track &recoTrack);
-
    void createMuons(edm::Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle,
                     std::unique_ptr<reco::MuonCollection> &scoutingmuons);
    void createTracks(edm::Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle,
                      std::unique_ptr<reco::TrackCollection> &scoutingtracks);
    void createTracks(edm::Handle<std::vector<Run3ScoutingTrack>> scoutingtrackHandle,
                      std::unique_ptr<reco::TrackCollection> &scoutingtracks);
+   void createVertexs(edm::Handle<std::vector<Run3ScoutingVertex>> scoutingvertexHandle,
+                      std::unique_ptr<reco::VertexCollection> &scoutingvertexs);
 
    void clearVars();
 
@@ -76,6 +76,7 @@ private:
    const edm::EDGetTokenT<std::vector<Run3ScoutingMuon>> input_scoutingmuon_token_;
    const edm::EDGetTokenT<std::vector<Run3ScoutingMuon>> input_scoutingmuonNoVtx_token_;
    const edm::EDGetTokenT<std::vector<Run3ScoutingTrack>> input_scoutingtrack_token_;
+   const edm::EDGetTokenT<std::vector<Run3ScoutingVertex>> scoutingPrimaryVertex_collection_token_;
 };
 
 //
@@ -84,13 +85,14 @@ private:
 Scout4BScoutToRecoProducer::Scout4BScoutToRecoProducer(edm::ParameterSet const &iConfig)
     : input_scoutingmuon_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingMuon"))),
       input_scoutingmuonNoVtx_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingMuonNoVtx"))),
-      input_scoutingtrack_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingTrack")))
+      input_scoutingtrack_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingTrack"))),
+      scoutingPrimaryVertex_collection_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingPrimaryVertex")))
 {
    // register products
-
    produces<reco::MuonCollection>("recoMuons");
    produces<reco::TrackCollection>("recoTrackMuons");
    produces<reco::TrackCollection>("recoTracks");
+   produces<reco::VertexCollection>("recoVertexs");
 }
 
 Scout4BScoutToRecoProducer::~Scout4BScoutToRecoProducer() = default;
@@ -103,11 +105,14 @@ void Scout4BScoutToRecoProducer::produce(edm::Event &iEvent, edm::EventSetup con
    Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle;
    Handle<std::vector<Run3ScoutingMuon>> scoutingmuonNoVtxHandle;
    Handle<std::vector<Run3ScoutingTrack>> scoutingtrackHandle;
+   Handle<std::vector<Run3ScoutingVertex>> scoutingvertexHandle;
+
    iEvent.getByToken(input_scoutingmuon_token_, scoutingmuonHandle);
    iEvent.getByToken(input_scoutingmuonNoVtx_token_, scoutingmuonNoVtxHandle);
    iEvent.getByToken(input_scoutingtrack_token_, scoutingtrackHandle);
+   iEvent.getByToken(scoutingPrimaryVertex_collection_token_, scoutingvertexHandle);
 
-   if (!scoutingmuonHandle.isValid() || !scoutingtrackHandle.isValid())
+   if (!scoutingmuonHandle.isValid() || !scoutingtrackHandle.isValid() || !scoutingvertexHandle.isValid())
    {
       return;
    }
@@ -116,6 +121,7 @@ void Scout4BScoutToRecoProducer::produce(edm::Event &iEvent, edm::EventSetup con
    auto pfcands = std::make_unique<reco::MuonCollection>();     // Store reco::Muons for output
    auto tkcands = std::make_unique<reco::TrackCollection>();    // Store reco::Tracks from Muons for output
    auto tkallcands = std::make_unique<reco::TrackCollection>(); // Store reco::Tracks for output
+   auto vtxcands = std::make_unique<reco::VertexCollection>();  // Store reco::Vertex for output
 
    // Create reco::Muons from scoutingmuon and scoutingmuonNoVtx
    createMuons(scoutingmuonHandle, pfcands);
@@ -174,6 +180,9 @@ void Scout4BScoutToRecoProducer::produce(edm::Event &iEvent, edm::EventSetup con
    // Create reco::Tracks from scoutingtrack
    createTracks(scoutingtrackHandle, tkallcands);
 
+   // Create reco::Vertex from scoutingvertex
+   createVertexs(scoutingvertexHandle, vtxcands);
+
    // std::cout << "Number of reco::Muons: " << pfcands->size() << std::endl;
    // std::cout << "Number of reco::Tracks from Muons: " << tkcands->size() << std::endl;
    // std::cout << "Number of reco::Tracks: " << tkallcands->size() << std::endl;
@@ -181,6 +190,7 @@ void Scout4BScoutToRecoProducer::produce(edm::Event &iEvent, edm::EventSetup con
    edm::OrphanHandle<reco::MuonCollection> oh = iEvent.put(std::move(pfcands), "recoMuons");
    edm::OrphanHandle<reco::TrackCollection> oh2 = iEvent.put(std::move(tkcands), "recoTrackMuons");
    edm::OrphanHandle<reco::TrackCollection> oh3 = iEvent.put(std::move(tkallcands), "recoTracks");
+   edm::OrphanHandle<reco::VertexCollection> oh4 = iEvent.put(std::move(vtxcands), "recoVertexs");
 
    clearVars();
 }
@@ -196,6 +206,8 @@ void Scout4BScoutToRecoProducer::fillDescriptions(edm::ConfigurationDescriptions
    desc.add<edm::InputTag>("scoutingMuon", edm::InputTag("hltScoutingMuonPackerVtx"));
    desc.add<edm::InputTag>("scoutingMuonNoVtx", edm::InputTag("hltScoutingMuonPackerNoVtx"));
    desc.add<edm::InputTag>("scoutingTrack", edm::InputTag("hltScoutingTrackPacker"));
+   desc.add<edm::InputTag>("scoutingPrimaryVertex", edm::InputTag("hltScoutingPrimaryVertexPacker"));
+   
    descriptions.add("Scout4BScoutToRecoProducer", desc);
 }
 
@@ -299,6 +311,37 @@ reco::Muon Scout4BScoutToRecoProducer::createMuon(Run3ScoutingMuon const &scouti
    return recomuon;
 }
 
+reco::Vertex Scout4BScoutToRecoProducer::createVertex(Run3ScoutingVertex const &scoutingVertex)
+{
+   // fill point coordinate
+   reco::Vertex::Point point(scoutingVertex.x(), scoutingVertex.y(), scoutingVertex.z());
+
+   // fill error
+   std::vector<float> error_vec(6);
+   error_vec[0] = scoutingVertex.xError() * scoutingVertex.xError(); // cov(0, 0)
+   error_vec[1] = 0;                                                 // cov(0, 1)
+   error_vec[2] = 0;                                                 // cov(0, 2)
+   error_vec[3] = scoutingVertex.yError() * scoutingVertex.yError(); // cov(1, 1)
+   error_vec[4] = 0;                                                 // cov(1, 2)
+   error_vec[5] = scoutingVertex.zError() * scoutingVertex.zError(); // cov(2, 2)
+
+   // off-diagonal errors are added in the begining of 2024
+   // see https://github.com/cms-sw/cmssw/pull/43758
+   try
+   {
+      error_vec[1] = scoutingVertex.xyCov();
+      error_vec[2] = scoutingVertex.xzCov();
+      error_vec[4] = scoutingVertex.yzCov();
+   }
+   catch (...)
+   { // do nothing
+   }
+
+   reco::Vertex::Error error(error_vec.begin(), error_vec.end());
+
+   return scoutingVertex.isValidVtx() ? reco::Vertex(point, error, scoutingVertex.chi2(), scoutingVertex.ndof(), scoutingVertex.tracksSize()) : reco::Vertex(point, error);
+}
+
 void Scout4BScoutToRecoProducer::createMuons(
     edm::Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle,
     std::unique_ptr<reco::MuonCollection> &scoutingmuons)
@@ -338,6 +381,19 @@ void Scout4BScoutToRecoProducer::createTracks(
       auto tkcand = createTrack(scoutingmuon);
       if (tkcand.pt() != 0)
          scoutingtracks->push_back(tkcand);
+   }
+}
+
+void Scout4BScoutToRecoProducer::createVertexs(
+    edm::Handle<std::vector<Run3ScoutingVertex>> scoutingvertexHandle,
+    std::unique_ptr<reco::VertexCollection> &scoutingvertexs)
+{
+   for (unsigned int icand = 0; icand < scoutingvertexHandle->size(); ++icand)
+   {
+      auto &scoutingvertex = (*scoutingvertexHandle)[icand];
+
+      auto vtxcand = createVertex(scoutingvertex);
+      scoutingvertexs->push_back(vtxcand);
    }
 }
 

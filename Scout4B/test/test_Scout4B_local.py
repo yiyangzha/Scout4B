@@ -1,6 +1,9 @@
 import FWCore.ParameterSet.Config as cms
+from PhysicsTools.NanoAOD.common_cff import *
+from RecoVertex.BeamSpotProducer.BeamSpotFakeParameters_cfi import *
 from Configuration.AlCa.GlobalTag import GlobalTag
 import time
+
 process = cms.Process('BScoutNANO')
 # set file name according time
 ouput_filename = 'Scout4B' + time.strftime("%Y%m%d-%H%M%S") + '.root'
@@ -19,17 +22,19 @@ process.load("FWCore.MessageService.MessageLogger_cfi")
 #process.GlobalTag = GlobalTag(process.GlobalTag, '124X_dataRun3_PromptAnalysis_v2', '') #2022 FG PromptReco
 process.GlobalTag = GlobalTag(process.GlobalTag, '130X_dataRun3_PromptAnalysis_v1', '') #2023 CD ReReco
 
-process.MessageLogger.cerr.FwkSummary.reportEvery = 100000
-process.MessageLogger.cerr.FwkReport.reportEvery = 100000
+process.MessageLogger.cerr.FwkSummary.reportEvery = 10000
+process.MessageLogger.cerr.FwkReport.reportEvery = 10000
 #process.MessageLogger.cerr.threshold = 'ERROR'
+
+
 
 process.maxEvents = cms.untracked.PSet( 
     input = cms.untracked.int32(-1) # -1 
 )
-
+# skip first 10000 events
 process.source = cms.Source("PoolSource",
         fileNames = cms.untracked.vstring(
-        #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/4298f9f5-a746-4bf5-99cd-ea491f4e678c.root',
+        'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/4298f9f5-a746-4bf5-99cd-ea491f4e678c.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/4f516e00-43f7-4b65-ade1-490a3590faac.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/5d476985-1a6d-4bd2-8206-f69c068908ec.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/6b90b87c-76a8-4dcd-91d7-117150371df1.root',
@@ -38,7 +43,7 @@ process.source = cms.Source("PoolSource",
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/cc48f5a8-2a33-4067-ad1c-1c800a1af070.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/300/00000/07026d37-c60d-4f33-8b6c-71535dbfd4f0.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/300/00000/121bc64b-86d9-4385-a93d-1c35378a7059.root',
-        'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/300/00000/2bbc6972-6e79-4b87-aebc-8d8944cd8a8a.root',
+        #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/300/00000/2bbc6972-6e79-4b87-aebc-8d8944cd8a8a.root',
         )
 )
 
@@ -68,19 +73,22 @@ process.Scout4BConverter = cms.EDProducer("Scout4BScoutToRecoProducer",
     scoutingMuon = cms.InputTag("hltScoutingMuonPackerVtx"),
     scoutingMuonNoVtx = cms.InputTag("hltScoutingMuonPackerNoVtx"),
     scoutingTrack = cms.InputTag("hltScoutingTrackPacker"),
+    scoutingPrimaryVertex = cms.InputTag("hltScoutingPrimaryVertexPacker", "primaryVtx")
 )
 
 '''
 process.Scout4BScoutMuFilter = cms.EDFilter("TrackCountFilter",
     src       = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
-    minNumber = cms.uint32(2),
+    minNumber = cms.uint32(2)
 )
 '''
 
 process.Scout4BScoutTrkFilter = cms.EDFilter("TrackCountFilter",
     src       = cms.InputTag("Scout4BConverter", "recoTracks"),
-    minNumber = cms.uint32(2),
+    minNumber = cms.uint32(2)
 )
+
+process.offlineBeamSpot = cms.EDProducer("BeamSpotProducer")
 
 # Bs -> J/psi phi -> mu+ mu- K+ K-
 process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
@@ -88,12 +96,19 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
     treename = cms.untracked.string("BsJpsiPhiMuMuKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(3.0969),                       # J/psi
     MMuMassErr = cms.vdouble(0.000006),
@@ -115,7 +130,7 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -131,12 +146,19 @@ process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
     treename = cms.untracked.string("BsPhiPhiKKKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(0),
     MMuMassErr = cms.vdouble(0),
@@ -158,7 +180,7 @@ process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -174,12 +196,19 @@ process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
     treename = cms.untracked.string("B0JpsiKstarMuMuKpPim"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(3.0969),                       # J/psi
     MMuMassErr = cms.vdouble(0.000006),
@@ -201,7 +230,7 @@ process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -217,12 +246,19 @@ process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
     treename = cms.untracked.string("B0JpsiKstarMuMuKmPip"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(3.0969),                       # J/psi
     MMuMassErr = cms.vdouble(0.000006),
@@ -244,7 +280,7 @@ process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -260,12 +296,19 @@ process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyz
     treename = cms.untracked.string("D0KpPim"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(0),
     MMuMassErr = cms.vdouble(0),
@@ -287,7 +330,7 @@ process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyz
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -303,12 +346,19 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnaly
     treename = cms.untracked.string("D0KmPip"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     recoTrack = cms.InputTag("Scout4BConverter", "recoTracks"),
+    recoVertex = cms.InputTag("Scout4BConverter", "recoVertexs"),
+    beamSpot = cms.InputTag("offlineBeamSpot"),
     TriggerResults  = cms.InputTag("TriggerResults", "", "HLT"),
     FilterNames     = cms.vstring(
-    'HLT_DoubleMu2_Jpsi_LowPt',                #  1=        1
-    'HLT_Dimuon0_Jpsi3p5_Muon2',               #  2=        2
-    'HLT_DoubleMu4_JpsiTrkTrk_Displaced',      #  3=        4
-    'HLT_DoubleMu2_Jpsi_DoubleTrk1_Phi1p05'    #  4=        8
+    'DST_PFScouting_DoubleMuon',               #  1=        1
+    'DST_PFScouting_DatasetMuon',              #  2=        2
+    'DST_PFScouting_SingleMuon',               #  3=        4
+    'DST_PFScouting_ZeroBias'                  #  4=        8
+    'HLT_DoubleMu4_3_Bs',                      #  5=        16
+    'HLT_DoubleMu4_Jpsi_Displaced',            #  6=        32
+    'HLT_DoubleMu4_Jpsi_NoVertexing',          #  7=        64
+    'HLT_Mu7p5_L2Mu2_Jpsi',                    #  8=        128
+    'HLT_Dimuon0_Jpsi'                         #  9=        256
     ),
     MMuMass = cms.vdouble(0),
     MMuMassErr = cms.vdouble(0),
@@ -330,7 +380,7 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnaly
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
-    PIso = cms.untracked.double(0.02),
+    PIso = cms.untracked.double(0.01),
     doIso = cms.untracked.bool(True),
     doTrigger = cms.untracked.bool(False),
     vProbMin = cms.untracked.double(1e-3),
@@ -342,6 +392,7 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnaly
 
 process.convert_step = cms.Path(process.Scout4BConverter)
 process.filter_step = cms.Path(process.Scout4BScoutTrkFilter)
+process.beamspot_step = cms.Path(process.offlineBeamSpot)
 process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
 process.vertexFinderBsPP = cms.Path(process.Scout4BVertexFinderBsPP)
 process.vertexFinderB0JK = cms.Path(process.Scout4BVertexFinderB0JK)
@@ -352,6 +403,7 @@ process.vertexFinderD0B = cms.Path(process.Scout4BVertexFinderD0B)
 process.schedule = cms.Schedule(
     process.convert_step,
     process.filter_step,
+    process.beamspot_step,
     process.vertexFinderBsJP,
     process.vertexFinderBsPP,
     process.vertexFinderB0JK,

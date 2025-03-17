@@ -54,4 +54,5 @@
 <use name="RecoVertex/VertexTools"/>
 <use name="CommonTools/UtilAlgos"/>
 <use name="FWCore/ServiceRegistry"/>
+<use name="Scout4B/Scout4B"/>
 <flags EDM_PLUGIN="1"/>

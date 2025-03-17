@@ -6,7 +6,7 @@ import time
 
 process = cms.Process('BScoutNANO')
 # set file name according time
-ouput_filename = 'Scout4B' + time.strftime("%Y%m%d-%H%M%S") + '.root'
+ouput_filename = 'Scout4B_' + time.strftime("%Y%m%d-%H%M%S") + '.root'
 
 process.load('Configuration.StandardSequences.Services_cff')
 process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')

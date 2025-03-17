@@ -18,12 +18,13 @@ std::pair<float, float> getAlphaXY(const GlobalPoint &vtx_position, const Global
 class KinematicFitResult
 {
 public:
-  KinematicFitResult() : charge_(-999), treeIsValid(false),
+  KinematicFitResult() : charge_(-999),
                          lxy_(-1.0), lxyErr_(-1.0), sigLxy_(-1.0),
                          lz_(-1.0), lzErr_(-1.0), sigLz_(-1.0),
                          l_(-1.0), lErr_(-1.0), sigL_(-1.0),
                          alphaBS_(-999.), alphaBSErr_(-999.),
-                         alphaBSXY_(-999.), alphaBSXYErr_(-999.)
+                         alphaBSXY_(-999.), alphaBSXYErr_(-999.),
+                         treeIsValid(false)
   {
   }
 
@@ -77,9 +78,6 @@ public:
   std::vector<reco::Track *> tracks;
   std::vector<unsigned int> trackIndices;
 
-  bool treeIsValid;
-  RefCountedKinematicVertex refitVertex;
-
 private:
   float lxy_, lxyErr_, sigLxy_;
   float lz_, lzErr_, sigLz_;
@@ -89,6 +87,8 @@ private:
   RefCountedKinematicParticle refitMother;
   RefCountedKinematicTree refitTree;
   std::vector<RefCountedKinematicParticle> refitDaughters;
+  bool treeIsValid;
+  RefCountedKinematicVertex refitVertex;
 };
 
 #endif

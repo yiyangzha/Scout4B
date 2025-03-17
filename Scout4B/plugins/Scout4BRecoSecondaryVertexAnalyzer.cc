@@ -1443,10 +1443,6 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
 
    // Cartesian product over each vertex group
    std::vector<unsigned int> candIndices(NM, 0);
-   for (unsigned int i = 0; i < NM; ++i)
-   {
-      candIndices[i] = i;
-   }
    
    unsigned long long candLoopCounter = 0;
    bool doneCandidates = false;

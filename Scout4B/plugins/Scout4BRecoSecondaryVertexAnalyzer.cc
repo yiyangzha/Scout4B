@@ -1365,29 +1365,30 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
             resultUnconstrained.charge_ = MCharge;
             resultUnconstrained.dau_charge_ = PCharge;
 
-            if (std::abs(resultUnconstrained.p4().M() - MMass) < MassWin && resultUnconstrained.vtxProb() > vProbMin && resultUnconstrained.p4().M() > MMassMin && abs(resultUnconstrained.p4().M() - MMass) < 3.0 * resultUnconstrained.massErr())
+            if (std::abs(resultUnconstrained.p4().M() - MMass) < MassWin && resultUnconstrained.vtxProb() > vProbMin && resultUnconstrained.p4().M() > MMassMin)
             {
                resultUnconstrained.postprocess(*beamSpot_);
-               auto displacements = compute3dDisplacement(resultUnconstrained);
-               for (unsigned int i = 0; i < NP ; ++i)
+               for (unsigned int i = 0; i < NP; ++i)
                {
                   resultUnconstrained.trackIndices.push_back(indices[i]);
                }
                unconstrainedCandidates.push_back(resultUnconstrained);
-
 
                // Use MCKinematicFitter for mass-constrained fit
                resultConstrained = MCKinematicFitter(trackPointers, PMass, MMass, MMassErr, bFieldHandle);
 
                if (resultConstrained.valid())
                {
-                  resultConstrained.charge_ = MCharge;
-                  resultConstrained.dau_charge_ = PCharge;
-                  for (unsigned int i = 0; i < NP ; ++i)
+                  if (resultConstrained.vtxProb() > vProbMin && resultConstrained.p4().M() > MMassMin && abs(resultConstrained.p4().M() - MMass) < MassWin && abs(resultConstrained.p4().M() - MMass) < 3 * resultConstrained.massErr())
                   {
-                     resultConstrained.trackIndices.push_back(indices[i]);
+                     resultConstrained.charge_ = MCharge;
+                     resultConstrained.dau_charge_ = PCharge;
+                     for (unsigned int i = 0; i < NP; ++i)
+                     {
+                        resultConstrained.trackIndices.push_back(indices[i]);
+                     }
+                     massConstrainedCandidates.push_back(resultConstrained);
                   }
-                  massConstrainedCandidates.push_back(resultConstrained);
                }
             }
          }
@@ -1443,7 +1444,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
 
    // Cartesian product over each vertex group
    std::vector<unsigned int> candIndices(NM, 0);
-   
+
    unsigned long long candLoopCounter = 0;
    bool doneCandidates = false;
    while (!doneCandidates)

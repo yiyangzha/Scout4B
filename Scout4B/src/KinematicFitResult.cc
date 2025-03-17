@@ -4,11 +4,10 @@
 #include <TMatrix.h>
 #include <TMath.h>
 
-std::pair<float, float>
-getAlpha(const GlobalPoint &vtx_position, const GlobalError &vtx_error,
-         const GlobalPoint &ip_position, const GlobalError &ip_error,
-         const GlobalVector &momentum,
-         bool transverse)
+std::pair<float, float> getAlpha(const GlobalPoint &vtx_position, const GlobalError &vtx_error,
+                                 const GlobalPoint &ip_position, const GlobalError &ip_error,
+                                 const GlobalVector &momentum,
+                                 bool transverse)
 {
   AlgebraicSymMatrix33 error_matrix(vtx_error.matrix() + ip_error.matrix());
   GlobalVector dir(vtx_position - ip_position);
@@ -54,6 +53,52 @@ getAlpha(const GlobalPoint &vtx_position, const GlobalError &vtx_error,
     return std::pair<float, float>(alpha, err_alpha);
 }
 
+std::pair<float, float> getAlphaXY(const GlobalPoint &vtx_position, const GlobalError &vtx_error,
+                                   const GlobalPoint &ip_position, const GlobalError &ip_error,
+                                   const GlobalVector &momentum,
+                                   bool transverse)
+{
+  AlgebraicSymMatrix33 error_matrix(vtx_error.matrix() + ip_error.matrix());
+  error_matrix[2][0] = error_matrix[2][1] = error_matrix[0][2] = error_matrix[1][2] = 0;
+  error_matrix[2][2] = 0;
+
+  GlobalVector dir(vtx_position.x() - ip_position.x(), vtx_position.y() - ip_position.y(), 0);
+  if (dir.mag() == 0)
+    return std::pair<float, float>(999., 999.);
+
+  GlobalVector p(momentum.x(), momentum.y(), 0);
+  if (transverse)
+  {
+    dir = GlobalVector(dir.x(), dir.y(), 0);
+    p = GlobalVector(p.x(), p.y(), 0);
+  }
+
+  double dot_product = dir.dot(p);
+  double cosAlpha = dot_product / p.mag() / dir.mag();
+  if (cosAlpha > 1)
+    cosAlpha = 1;
+  if (cosAlpha < -1)
+    cosAlpha = -1;
+
+  double c1 = 1 / dir.mag() / p.mag();
+  double c2 = dot_product / pow(dir.mag(), 2) / p.mag();
+
+  double dfdx = p.x() * c1 - dir.x() * c2;
+  double dfdy = p.y() * c1 - dir.y() * c2;
+
+  double err2_cosAlpha =
+      pow(dfdx, 2) * error_matrix(0, 0) +
+      pow(dfdy, 2) * error_matrix(1, 1) +
+      2 * dfdx * dfdy * error_matrix(0, 1);
+
+  float err_alpha = fabs(cosAlpha) <= 1 and err2_cosAlpha >= 0 ? sqrt(err2_cosAlpha) / sqrt(1 - pow(cosAlpha, 2)) : 999;
+  float alpha = acos(cosAlpha);
+  if (isnan(alpha) or isnan(err_alpha))
+    return std::pair<float, float>(999., 999.);
+  else
+    return std::pair<float, float>(alpha, err_alpha);
+}
+
 bool KinematicFitResult::valid() const
 {
   return treeIsValid and refitVertex->vertexIsValid();
@@ -63,41 +108,75 @@ void KinematicFitResult::postprocess(const reco::BeamSpot &beamSpot)
 {
   if (not valid())
     return;
-  // displacement information
-  TVector v(2);
-  v[0] = refitVertex->position().x() - beamSpot.position().x();
-  v[1] = refitVertex->position().y() - beamSpot.position().y();
 
-  TMatrix errVtx(2, 2);
+  // 1. Compute the displacement vector in 3D (X, Y, Z)
+  TVector v(3);
+  v[0] = refitVertex->position().x() - beamSpot.position().x(); // X direction displacement
+  v[1] = refitVertex->position().y() - beamSpot.position().y(); // Y direction displacement
+  v[2] = refitVertex->position().z() - beamSpot.position().z(); // Z direction displacement
+
+  // 2. Calculate the displacement error matrices (3D)
+  TMatrix errVtx(3, 3);
   errVtx(0, 0) = refitVertex->error().cxx();
   errVtx(0, 1) = refitVertex->error().matrix()(0, 1);
+  errVtx(0, 2) = refitVertex->error().matrix()(0, 2);
   errVtx(1, 0) = errVtx(0, 1);
   errVtx(1, 1) = refitVertex->error().cyy();
+  errVtx(1, 2) = refitVertex->error().matrix()(1, 2);
+  errVtx(2, 0) = errVtx(0, 2);
+  errVtx(2, 1) = errVtx(1, 2);
+  errVtx(2, 2) = refitVertex->error().czz();
 
-  TMatrix errBS(2, 2);
+  TMatrix errBS(3, 3);
   errBS(0, 0) = beamSpot.covariance()(0, 0);
   errBS(0, 1) = beamSpot.covariance()(0, 1);
-  errBS(1, 0) = beamSpot.covariance()(1, 0);
+  errBS(0, 2) = beamSpot.covariance()(0, 2);
+  errBS(1, 0) = errBS(0, 1);
   errBS(1, 1) = beamSpot.covariance()(1, 1);
+  errBS(1, 2) = beamSpot.covariance()(1, 2);
+  errBS(2, 0) = errBS(0, 2);
+  errBS(2, 1) = errBS(1, 2);
+  errBS(2, 2) = beamSpot.covariance()(2, 2);
 
-  lxy_ = sqrt(v.Norm2Sqr());
+  // 3. Calculate lxy (2D displacement) and lz (Z-axis displacement)
+  lxy_ = sqrt(v[0] * v[0] + v[1] * v[1]);
+  lz_ = v[2];                                         // Z-axis displacement
+  l_ = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); // 3D displacement
+
+  // 4. Calculate the error in lxy, lz, and l
+  TMatrix totalErr(3, 3);
+  totalErr = errVtx + errBS;
   lxyErr_ = sqrt(v * (errVtx * v) + v * (errBS * v)) / lxy_;
+  lzErr_ = sqrt(errVtx(2, 2) + errBS(2, 2)); // Z-axis error
+  lErr_ = sqrt(v * (totalErr * v));          // 3D displacement error
+
+  // 5. Calculate significance for lxy, lz, and l
   if (lxyErr_ > 0)
     sigLxy_ = lxy_ / lxyErr_;
+  if (lzErr_ > 0)
+    sigLz_ = lz_ / lzErr_;
+  if (lErr_ > 0)
+    sigL_ = l_ / lErr_;
 
-  // compute pointing angle wrt BeamSpot (2D)
+  // 6. Compute pointing angle wrt BeamSpot (2D and 3D)
+  auto alphaXY = getAlphaXY(refitVertex->vertexState().position(),
+                            refitVertex->vertexState().error(),
+                            GlobalPoint(Basic3DVector<float>(beamSpot.position())),
+                            GlobalError(beamSpot.rotatedCovariance3D()),
+                            refitMother->currentState().globalMomentum(),
+                            true);
+  alphaBSXY_ = alphaXY.first;
+  alphaBSXYErr_ = alphaXY.second;
 
-  // rotatedCovariance3D - is a proper covariance matrix for Beam Spot,
-  // which includes the beam spot width, not just uncertainty on the
-  // absolute beamspot position
-  auto alphaXY = getAlpha(refitVertex->vertexState().position(),
-                          refitVertex->vertexState().error(),
-                          GlobalPoint(Basic3DVector<float>(beamSpot.position())),
-                          GlobalError(beamSpot.rotatedCovariance3D()),
-                          refitMother->currentState().globalMomentum(),
-                          true);
-  alphaBS_ = alphaXY.first;
-  alphaBSErr_ = alphaXY.second;
+  // 7. Compute pointing angle in the transverse plane (XY)
+  auto alpha = getAlpha(refitVertex->vertexState().position(),
+                        refitVertex->vertexState().error(),
+                        GlobalPoint(Basic3DVector<float>(beamSpot.position())),
+                        GlobalError(beamSpot.rotatedCovariance3D()),
+                        refitMother->currentState().globalMomentum(),
+                        false);
+  alphaBS_ = alpha.first;
+  alphaBSErr_ = alpha.second;
 }
 
 float KinematicFitResult::mass() const
@@ -225,8 +304,6 @@ void KinematicFitResult::set_tree(RefCountedKinematicTree tree)
   if (not tree->isValid())
     return;
 
-  treeIsValid = true;
-
   // extract the re-fitted tracks
   if (tree->movePointerToTheFirstChild())
   {
@@ -240,6 +317,12 @@ void KinematicFitResult::set_tree(RefCountedKinematicTree tree)
   refitVertex = tree->currentDecayVertex();
   refitMother = tree->currentParticle();
   refitTree = tree;
+
+  // Check matrix()(6, 6) and chi2
+  if (refitMother->currentState().kinematicParametersError().matrix()(6, 6) < 0 or refitVertex->chiSquared() < 0 || refitVertex->degreesOfFreedom() <= 0)
+    return;
+
+  treeIsValid = true;
 }
 
 GlobalPoint KinematicFitResult::vtx_position() const

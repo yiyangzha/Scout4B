@@ -59,8 +59,6 @@ public:
    reco::Vertex createVertex(Run3ScoutingVertex const &scoutingVertex);
    reco::Muon createMuon(Run3ScoutingMuon const &scoutingMuon);
 
-   void buildHitPattern(Run3ScoutingMuon const &scoutingMuon, Run3ScoutingTrack const &scoutingTrack, reco::Track &recoTrack);
-
    void createMuons(edm::Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle,
                     std::unique_ptr<reco::MuonCollection> &scoutingmuons);
    void createTracks(edm::Handle<std::vector<Run3ScoutingMuon>> scoutingmuonHandle,
@@ -91,7 +89,6 @@ Scout4BScoutToRecoProducer::Scout4BScoutToRecoProducer(edm::ParameterSet const &
       scoutingPrimaryVertex_collection_token_(consumes(iConfig.getParameter<edm::InputTag>("scoutingPrimaryVertex")))
 {
    // register products
-
    produces<reco::MuonCollection>("recoMuons");
    produces<reco::TrackCollection>("recoTrackMuons");
    produces<reco::TrackCollection>("recoTracks");
@@ -209,6 +206,8 @@ void Scout4BScoutToRecoProducer::fillDescriptions(edm::ConfigurationDescriptions
    desc.add<edm::InputTag>("scoutingMuon", edm::InputTag("hltScoutingMuonPackerVtx"));
    desc.add<edm::InputTag>("scoutingMuonNoVtx", edm::InputTag("hltScoutingMuonPackerNoVtx"));
    desc.add<edm::InputTag>("scoutingTrack", edm::InputTag("hltScoutingTrackPacker"));
+   desc.add<edm::InputTag>("scoutingPrimaryVertex", edm::InputTag("hltScoutingPrimaryVertexPacker"));
+   
    descriptions.add("Scout4BScoutToRecoProducer", desc);
 }
 

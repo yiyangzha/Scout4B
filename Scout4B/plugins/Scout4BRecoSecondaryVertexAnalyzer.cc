@@ -130,9 +130,17 @@ struct XFitResult
 
    double xlxy;
    double xlxyErr;
+   double xlz;
+   double xlzErr;
+   double xl;
+   double xlErr;
    double xsigLxy;
+   double xsigLz;
+   double xsigL;
    double xalphaBS;
    double xalphaBSErr;
+   double xalphaBSXY;
+   double xalphaBSXYErr;
 
    std::vector<unsigned int> mIndices;
    std::vector<std::vector<unsigned int>> mTrackIndices;
@@ -145,9 +153,17 @@ struct XFitResult
       normChi2 = 0;
       xlxy = -999;
       xlxyErr = -999;
+      xlz = -999;
+      xlzErr = -999;
+      xl = -999;
+      xlErr = -999;
       xsigLxy = -999;
+      xsigLz = -999;
+      xsigL = -999;
       xalphaBS = -999;
       xalphaBSErr = -999;
+      xalphaBSXY = -999;
+      xalphaBSXYErr = -999;
    }
 };
 
@@ -219,8 +235,13 @@ private:
    const edm::EDGetTokenT<std::vector<reco::Track>> input_recoTrackMuon_token_;
    const edm::EDGetTokenT<std::vector<reco::Track>> input_recoTrack_token_;
    const edm::EDGetTokenT<std::vector<reco::Vertex>> input_recoVertex_token_;
+
+   edm::EDGetTokenT<reco::BeamSpot> beamSpotToken_;
+   const reco::BeamSpot *beamSpot_;
+
    edm::EDGetTokenT<edm::TriggerResults> triggerresults_;
    std::vector<std::string> FilterNames_;
+
    const std::vector<double> MMuMass_;
    const std::vector<double> MMuMassErr_;
    const std::vector<double> MTrkMass_;
@@ -248,13 +269,10 @@ private:
    const unsigned long long maxLoop_;
    const double MMassMin_;
    const double XMassMin_;
+
    const edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magneticFieldToken_;
 
    const AnalyticalImpactPointExtrapolator *impactPointExtrapolator;
-
-   edm::EDGetTokenT<reco::BeamSpot> beamSpotToken_;
-
-   const reco::BeamSpot *beamSpot_;
    std::vector<reco::Vertex> vertices_;
 
    // Define output parameters
@@ -290,15 +308,21 @@ private:
 
    double xlxy[5];
    double xlxyErr[5];
+   double xlz[5];
+   double xlzErr[5];
+   double xl[5];
+   double xlErr[5];
    double xsigLxy[5];
+   double xsigLz[5];
+   double xsigL[5];
    double xalphaBS[5];
    double xalphaBSErr[5];
+   double xalphaBSXY[5];
+   double xalphaBSXYErr[5];
 
    // M particle branches
    double mMass[5][4];
    double mMassError[5][4];
-   double mNMCMass[5][4];
-   double mNMCMassError[5][4];
    double mPt[5][4];
    double mEta[5][4];
    double mPhi[5][4];
@@ -314,9 +338,17 @@ private:
 
    double NMC_mlxyMu[5][4];
    double NMC_mlxyErrMu[5][4];
+   double NMC_mlzMu[5][4];
+   double NMC_mlzErrMu[5][4];
+   double NMC_mlMu[5][4];
+   double NMC_mlErrMu[5][4];
    double NMC_msigLxyMu[5][4];
+   double NMC_msigLzMu[5][4];
+   double NMC_msigLMu[5][4];
    double NMC_malphaBSMu[5][4];
    double NMC_malphaBSErrMu[5][4];
+   double NMC_malphaBSXYMu[5][4];
+   double NMC_malphaBSXYErrMu[5][4];
 
    double NMC_mMassTrk[5][4];
    double NMC_mMassErrTrk[5][4];
@@ -328,9 +360,17 @@ private:
 
    double NMC_mlxyTrk[5][4];
    double NMC_mlxyErrTrk[5][4];
+   double NMC_mlzTrk[5][4];
+   double NMC_mlzErrTrk[5][4];
+   double NMC_mlTrk[5][4];
+   double NMC_mlErrTrk[5][4];
    double NMC_msigLxyTrk[5][4];
+   double NMC_msigLzTrk[5][4];
+   double NMC_msigLTrk[5][4];
    double NMC_malphaBSTrk[5][4];
    double NMC_malphaBSErrTrk[5][4];
+   double NMC_malphaBSXYTrk[5][4];
+   double NMC_malphaBSXYErrTrk[5][4];
 
    // Daughter particle branches
    double dMass[5][4][8];
@@ -361,6 +401,8 @@ Scout4BRecoSecondaryVertexAnalyzer::Scout4BRecoSecondaryVertexAnalyzer(const edm
       input_recoTrackMuon_token_(consumes<std::vector<reco::Track>>(iConfig.getParameter<edm::InputTag>("recoTrackMuon"))),
       input_recoTrack_token_(consumes<std::vector<reco::Track>>(iConfig.getParameter<edm::InputTag>("recoTrack"))),
       input_recoVertex_token_(consumes<std::vector<reco::Vertex>>(iConfig.getParameter<edm::InputTag>("recoVertex"))),
+      beamSpotToken_(consumes<reco::BeamSpot>(iConfig.getParameter<edm::InputTag>("beamSpot"))),
+      beamSpot_(nullptr),
       triggerresults_(consumes<edm::TriggerResults>(iConfig.getParameter<edm::InputTag>("TriggerResults"))),
       FilterNames_(iConfig.getParameter<std::vector<std::string>>("FilterNames")),
       MMuMass_(iConfig.getParameter<std::vector<double>>("MMuMass")),
@@ -390,9 +432,7 @@ Scout4BRecoSecondaryVertexAnalyzer::Scout4BRecoSecondaryVertexAnalyzer(const edm
       maxLoop_(iConfig.getUntrackedParameter<unsigned long long>("maxLoop", 1000000000)),
       MMassMin_(iConfig.getUntrackedParameter<double>("MMassMin", 1e-2)),
       XMassMin_(iConfig.getUntrackedParameter<double>("XMassMin", 1e-2)),
-      magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
-      beamSpotToken_(consumes<reco::BeamSpot>(iConfig.getParameter<edm::InputTag>("beamSpot"))),
-      beamSpot_(nullptr)
+      magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>())
 {
 }
 
@@ -430,14 +470,20 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
 
    Scout4BTree->Branch("X_lxy", xlxy, "X_lxy[5]/D");
    Scout4BTree->Branch("X_lxyErr", xlxyErr, "X_lxyErr[5]/D");
+   Scout4BTree->Branch("X_lz", xlz, "X_lz[5]/D");
+   Scout4BTree->Branch("X_lzErr", xlzErr, "X_lzErr[5]/D");
+   Scout4BTree->Branch("X_l", xl, "X_l[5]/D");
+   Scout4BTree->Branch("X_lErr", xlErr, "X_lErr[5]/D");
    Scout4BTree->Branch("X_sigLxy", xsigLxy, "X_sigLxy[5]/D");
+   Scout4BTree->Branch("X_sigLz", xsigLz, "X_sigLz[5]/D");
+   Scout4BTree->Branch("X_sigL", xsigL, "X_sigL[5]/D");
    Scout4BTree->Branch("X_alphaBS", xalphaBS, "X_alphaBS[5]/D");
    Scout4BTree->Branch("X_alphaBSErr", xalphaBSErr, "X_alphaBSErr[5]/D");
+   Scout4BTree->Branch("X_alphaBSXY", xalphaBSXY, "X_alphaBSXY[5]/D");
+   Scout4BTree->Branch("X_alphaBSXYErr", xalphaBSXYErr, "X_alphaBSXYErr[5]/D");
 
    Scout4BTree->Branch("M_Mass", mMass, "M_Mass[5][4]/D");
    Scout4BTree->Branch("M_MassError", mMassError, "M_MassError[5][4]/D");
-   Scout4BTree->Branch("M_NMC_Mass", mNMCMass, "M_NMC_Mass[5][4]/D");
-   Scout4BTree->Branch("M_NMC_MassError", mNMCMassError, "M_NMC_MassError[5][4]/D");
    Scout4BTree->Branch("M_Pt", mPt, "M_Pt[5][4]/D");
    Scout4BTree->Branch("M_Eta", mEta, "M_Eta[5][4]/D");
    Scout4BTree->Branch("M_Phi", mPhi, "M_Phi[5][4]/D");
@@ -477,14 +523,31 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
 
    NMC_Scout4BTree->Branch("NMC_M_lxyMu", NMC_mlxyMu, "NMC_M_lxyMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_lxyErrMu", NMC_mlxyErrMu, "NMC_M_lxyErrMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lzMu", NMC_mlzMu, "NMC_M_lzMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lzErrMu", NMC_mlzErrMu, "NMC_M_lzErrMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lMu", NMC_mlMu, "NMC_M_lMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lErrMu", NMC_mlErrMu, "NMC_M_lErrMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_sigLxyMu", NMC_msigLxyMu, "NMC_M_sigLxyMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLzMu", NMC_msigLzMu, "NMC_M_sigLzMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLMu", NMC_msigLMu, "NMC_M_sigLMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_alphaBSMu", NMC_malphaBSMu, "NMC_M_alphaBSMu[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_alphaBSErrMu", NMC_malphaBSErrMu, "NMC_M_alphaBSErrMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSXYMu", NMC_malphaBSXYMu, "NMC_M_alphaBSXYMu[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSXYErrMu", NMC_malphaBSXYErrMu, "NMC_M_alphaBSXYErrMu[5][4]/D");
+
    NMC_Scout4BTree->Branch("NMC_M_lxyTrk", NMC_mlxyTrk, "NMC_M_lxyTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_lxyErrTrk", NMC_mlxyErrTrk, "NMC_M_lxyErrTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lzTrk", NMC_mlzTrk, "NMC_M_lzTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lzErrTrk", NMC_mlzErrTrk, "NMC_M_lzErrTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lTrk", NMC_mlTrk, "NMC_M_lTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_lErrTrk", NMC_mlErrTrk, "NMC_M_lErrTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_sigLxyTrk", NMC_msigLxyTrk, "NMC_M_sigLxyTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLzTrk", NMC_msigLzTrk, "NMC_M_sigLzTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_sigLTrk", NMC_msigLTrk, "NMC_M_sigLTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_alphaBSTrk", NMC_malphaBSTrk, "NMC_M_alphaBSTrk[5][4]/D");
    NMC_Scout4BTree->Branch("NMC_M_alphaBSErrTrk", NMC_malphaBSErrTrk, "NMC_M_alphaBSErrTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSXYTrk", NMC_malphaBSXYTrk, "NMC_M_alphaBSXYTrk[5][4]/D");
+   NMC_Scout4BTree->Branch("NMC_M_alphaBSXYErrTrk", NMC_malphaBSXYErrTrk, "NMC_M_alphaBSXYErrTrk[5][4]/D");
 
    NMC_Scout4BTree->Branch("NMC_D_MassMu", NMC_dMassMu, "NMC_D_MassMu[5][4][8]/D");
    NMC_Scout4BTree->Branch("NMC_D_PtMu", NMC_dPtMu, "NMC_D_PtMu[5][4][8]/D");
@@ -497,6 +560,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
    NMC_Scout4BTree->Branch("NMC_D_PhiTrk", NMC_dPhiTrk, "NMC_D_PhiTrk[5][4][8]/D");
    NMC_Scout4BTree->Branch("NMC_D_ChargeTrk", NMC_dChargeTrk, "NMC_D_ChargeTrk[5][4][8]/I");
 }
+
 void Scout4BRecoSecondaryVertexAnalyzer::endJob()
 {
    clearVars();
@@ -515,7 +579,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    AnalyticalImpactPointExtrapolator extrapolator(&bFieldHandle);
    impactPointExtrapolator = &extrapolator;
 
-   Handle<reco::BeamSpot> beamSpotHandle;
+   edm::Handle<reco::BeamSpot> beamSpotHandle;
    iEvent.getByToken(beamSpotToken_, beamSpotHandle);
 
    if (!beamSpotHandle.isValid())
@@ -527,11 +591,11 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    beamSpot_ = beamSpotHandle.product();
 
    // Collect inputs
-   Handle<std::vector<reco::Track>> recoTrackMuon;
+   edm::Handle<std::vector<reco::Track>> recoTrackMuon;
    iEvent.getByToken(input_recoTrackMuon_token_, recoTrackMuon);
-   Handle<std::vector<reco::Track>> recoTrack;
+   edm::Handle<std::vector<reco::Track>> recoTrack;
    iEvent.getByToken(input_recoTrack_token_, recoTrack);
-   Handle<std::vector<reco::Vertex>> recoVertex;
+   edm::Handle<std::vector<reco::Vertex>> recoVertex;
    iEvent.getByToken(input_recoVertex_token_, recoVertex);
 
    // get vertices_
@@ -757,9 +821,17 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 
          NMC_mlxyMu[i][j] = NMC_mCandidatesMu[j][i].lxy();
          NMC_mlxyErrMu[i][j] = NMC_mCandidatesMu[j][i].lxyErr();
+         NMC_mlzMu[i][j] = NMC_mCandidatesMu[j][i].lz();
+         NMC_mlzErrMu[i][j] = NMC_mCandidatesMu[j][i].lzErr();
+         NMC_mlMu[i][j] = NMC_mCandidatesMu[j][i].l();
+         NMC_mlErrMu[i][j] = NMC_mCandidatesMu[j][i].lErr();
          NMC_msigLxyMu[i][j] = NMC_mCandidatesMu[j][i].sigLxy();
+         NMC_msigLzMu[i][j] = NMC_mCandidatesMu[j][i].sigLz();
+         NMC_msigLMu[i][j] = NMC_mCandidatesMu[j][i].sigL();
          NMC_malphaBSMu[i][j] = NMC_mCandidatesMu[j][i].alphaBS();
          NMC_malphaBSErrMu[i][j] = NMC_mCandidatesMu[j][i].alphaBSErr();
+         NMC_malphaBSXYMu[i][j] = NMC_mCandidatesMu[j][i].alphaBSXY();
+         NMC_malphaBSXYErrMu[i][j] = NMC_mCandidatesMu[j][i].alphaBSXYErr();
 
          // Access daughters
          for (unsigned int k = 0; k < NMC_mCandidatesMu[j][i].number_of_daughters(); k++)
@@ -787,11 +859,17 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
          NMC_mChi2Trk[i][j] = NMC_mCandidatesTrk[j][i].chi2() / (double)NMC_mCandidatesTrk[j][i].ndof();
          NMC_mChargeTrk[i][j] = NMC_mCandidatesTrk[j][i].charge_;
 
-         NMC_mlxyMu[i][j] = NMC_mCandidatesTrk[j][i].lxy();
-         NMC_mlxyErrMu[i][j] = NMC_mCandidatesTrk[j][i].lxyErr();
-         NMC_msigLxyMu[i][j] = NMC_mCandidatesTrk[j][i].sigLxy();
-         NMC_malphaBSMu[i][j] = NMC_mCandidatesTrk[j][i].alphaBS();
-         NMC_malphaBSErrMu[i][j] = NMC_mCandidatesTrk[j][i].alphaBSErr();
+         NMC_mlxyTrk[i][j] = NMC_mCandidatesTrk[j][i].lxy();
+         NMC_mlxyErrTrk[i][j] = NMC_mCandidatesTrk[j][i].lxyErr();
+         NMC_mlzTrk[i][j] = NMC_mCandidatesTrk[j][i].lz();
+         NMC_mlzErrTrk[i][j] = NMC_mCandidatesTrk[j][i].lzErr();
+         NMC_mlTrk[i][j] = NMC_mCandidatesTrk[j][i].l();
+         NMC_mlErrTrk[i][j] = NMC_mCandidatesTrk[j][i].lErr();
+         NMC_msigLxyTrk[i][j] = NMC_mCandidatesTrk[j][i].sigLxy();
+         NMC_malphaBSTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBS();
+         NMC_malphaBSErrTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBSErr();
+         NMC_malphaBSXYTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBSXY();
+         NMC_malphaBSXYErrTrk[i][j] = NMC_mCandidatesTrk[j][i].alphaBSXYErr();
 
          // Access daughters
          for (unsigned int k = 0; k < NMC_mCandidatesTrk[j][i].number_of_daughters(); k++)
@@ -890,9 +968,17 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 
       xlxy[i] = xCandidates[i].xlxy;
       xlxyErr[i] = xCandidates[i].xlxyErr;
+      xlz[i] = xCandidates[i].xlz;
+      xlzErr[i] = xCandidates[i].xlzErr;
+      xl[i] = xCandidates[i].xl;
+      xlErr[i] = xCandidates[i].xlErr;
       xsigLxy[i] = xCandidates[i].xsigLxy;
+      xsigLz[i] = xCandidates[i].xsigLz;
+      xsigL[i] = xCandidates[i].xsigL;
       xalphaBS[i] = xCandidates[i].xalphaBS;
       xalphaBSErr[i] = xCandidates[i].xalphaBSErr;
+      xalphaBSXY[i] = xCandidates[i].xalphaBSXY;
+      xalphaBSXYErr[i] = xCandidates[i].xalphaBSXYErr;
 
       for (unsigned int j = 0; j < xCandidates[i].mMother.size(); j++)
       {
@@ -1001,8 +1087,6 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::KinematicFitter(std::vect
    if (trks.size() != masses.size())
       throw cms::Exception("Error") << "number of tracks and number of masses should match";
 
-   std::vector<reco::TransientTrack> transTrks;
-
    KinematicParticleFactoryFromTransientTrack factory;
    KinematicParticleVertexFitter fitter;
 
@@ -1012,10 +1096,9 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::KinematicFitter(std::vect
    for (unsigned int i = 0; i < trks.size(); ++i)
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
-      transTrks.push_back(tt);
       float mass = masses[i];
       float massErr = mass / 1000.0;
-      particles.push_back(factory.particle(transTrks.back(), mass, chi, ndf, massErr));
+      particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 
    RefCountedKinematicTree vertexFitTree;
@@ -1039,8 +1122,6 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::MCKinematicFitter(std::ve
    if (trks.size() != masses.size())
       throw cms::Exception("Error") << "number of tracks and number of masses should match";
 
-   std::vector<reco::TransientTrack> transTrks;
-
    KinematicParticleFactoryFromTransientTrack factory;
    KinematicParticleVertexFitter fitter;
    KinematicParticleFitter MCfitter;
@@ -1052,10 +1133,9 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::MCKinematicFitter(std::ve
    for (unsigned int i = 0; i < trks.size(); ++i)
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
-      transTrks.push_back(tt);
       float mass = masses[i];
       float massErr = mass / 1000.0;
-      particles.push_back(factory.particle(transTrks.back(), mass, chi, ndf, massErr));
+      particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 
    RefCountedKinematicTree vertexFitTree;
@@ -1273,8 +1353,6 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
       for (unsigned int i = 0; i < NP && process; ++i)
       {
          trackPointers.push_back(&trackVec[indices[i]]);
-         resultUnconstrained.trackIndices.push_back(indices[i]);
-         resultConstrained.trackIndices.push_back(indices[i]);
       }
 
       if (process)
@@ -1291,7 +1369,12 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
             {
                resultUnconstrained.postprocess(*beamSpot_);
                auto displacements = compute3dDisplacement(resultUnconstrained);
+               for (unsigned int i = 0; i < NP ; ++i)
+               {
+                  resultUnconstrained.trackIndices.push_back(indices[i]);
+               }
                unconstrainedCandidates.push_back(resultUnconstrained);
+
 
                // Use MCKinematicFitter for mass-constrained fit
                resultConstrained = MCKinematicFitter(trackPointers, PMass, MMass, MMassErr, bFieldHandle);
@@ -1300,6 +1383,10 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
                {
                   resultConstrained.charge_ = MCharge;
                   resultConstrained.dau_charge_ = PCharge;
+                  for (unsigned int i = 0; i < NP ; ++i)
+                  {
+                     resultConstrained.trackIndices.push_back(indices[i]);
+                  }
                   massConstrainedCandidates.push_back(resultConstrained);
                }
             }
@@ -1356,6 +1443,11 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
 
    // Cartesian product over each vertex group
    std::vector<unsigned int> candIndices(NM, 0);
+   for (unsigned int i = 0; i < NM; ++i)
+   {
+      candIndices[i] = i;
+   }
+   
    unsigned long long candLoopCounter = 0;
    bool doneCandidates = false;
    while (!doneCandidates)
@@ -1451,12 +1543,12 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
       std::vector<double> mMassErr_result;
       std::vector<std::vector<unsigned int>> mTrackIndices_result;
       std::vector<RefCountedKinematicParticle> fittedMParticles;
-      KinematicFitResult mKinematicFitResult;
       XFitResult xResult;
 
       for (unsigned int i = 0; i < NM && massConstraintSuccess && processCandidate; ++i)
       {
          const KinematicFitResult &mCandidate = selectedM[i];
+         KinematicFitResult mKinematicFitResult;
 
          std::vector<double> parMasses;
          std::vector<reco::Track *> parTracks;
@@ -1481,29 +1573,32 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
          // Use MCKinematicFitter to apply mass constraint
          RefCountedKinematicTree constrainedTree;
          bool mcProcess = true;
-         {
-            try
-            {
-               mKinematicFitResult = MCKinematicFitter(parTracks, parMasses, MMass[i], MMassErr[i], bFieldHandle);
-            }
-            catch (const std::exception &e)
-            {
-               mcProcess = false;
-            }
-            if (mcProcess)
-            {
-               constrainedTree = mKinematicFitResult.tree();
-               mKinematicFitResult.postprocess(*beamSpot_);
-            }
-            if (mcProcess && (!constrainedTree || !constrainedTree->isValid()))
-               mcProcess = false;
 
+         try
+         {
+            mKinematicFitResult = MCKinematicFitter(parTracks, parMasses, MMass[i], MMassErr[i], bFieldHandle);
+         }
+         catch (const std::exception &e)
+         {
+            mcProcess = false;
+         }
+         if (mcProcess && mKinematicFitResult.valid())
+         {
+            constrainedTree = mKinematicFitResult.tree();
+            mKinematicFitResult.postprocess(*beamSpot_);
+         }
+         else
+         {
+            mcProcess = false;
+         }
+
+         if (mcProcess && (!constrainedTree || !constrainedTree->isValid()))
+            mcProcess = false;
+
+         if (mcProcess)
+         {
             constrainedTree->movePointerToTheTop();
             RefCountedKinematicParticle mMotherParticle = constrainedTree->currentParticle();
-            if (mMotherParticle->currentState().kinematicParametersError().matrix()(6, 6) < 0)
-            {
-               mcProcess = false;
-            }
          }
          if (!mcProcess)
          {
@@ -1605,22 +1700,45 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
                TLorentzVector xP4;
                xP4.SetPxPyPzE(mom.x(), mom.y(), mom.z(), energy);
 
+               KinematicFitResult xKinematicFitResult;
+               vector<reco::Track *> tracks;
+               for (unsigned int i = 0; i < NM; i++)
+               {
+                  for (unsigned int j = 0; j < mTrackIndices_result[i].size(); j++)
+                  {
+                     tracks.push_back(&trackVec[mTrackIndices_result[i][j]]);
+                  }
+               }
+               xKinematicFitResult.tracks = tracks;
+               xKinematicFitResult.set_tree(xVertexFitTree);
+               if (xKinematicFitResult.valid())
+                  xKinematicFitResult.postprocess(*beamSpot_);
+
                // Fill XFitResult
                xResult.mDaughter = mDaughter_result;
                xResult.mMother = mMother_result;
                xResult.xMotherP4 = xP4;
                xResult.xMotherCharge = XCharge;
+               xResult.mMassError = mMassErr_result;
                xResult.xMassError = std::sqrt(xMotherParticle->currentState().kinematicParametersError().matrix()(6, 6));
                xResult.normChi2 = xVertex->chiSquared() / (double)xVertex->degreesOfFreedom();
                xResult.mIndices = candIndices;
                xResult.mTrackIndices = mTrackIndices_result;
-               if (mKinematicFitResult.valid())
+               if (xKinematicFitResult.valid())
                {
-                  xResult.xlxy = mKinematicFitResult.lxy();
-                  xResult.xlxyErr = mKinematicFitResult.lxyErr();
-                  xResult.xsigLxy = mKinematicFitResult.sigLxy();
-                  xResult.xalphaBS = mKinematicFitResult.alphaBS();
-                  xResult.xalphaBSErr = mKinematicFitResult.alphaBSErr();
+                  xResult.xlxy = xKinematicFitResult.lxy();
+                  xResult.xlxyErr = xKinematicFitResult.lxyErr();
+                  xResult.xlz = xKinematicFitResult.lz();
+                  xResult.xlzErr = xKinematicFitResult.lzErr();
+                  xResult.xl = xKinematicFitResult.l();
+                  xResult.xlErr = xKinematicFitResult.lErr();
+                  xResult.xsigLxy = xKinematicFitResult.sigLxy();
+                  xResult.xsigLz = xKinematicFitResult.sigLz();
+                  xResult.xsigL = xKinematicFitResult.sigL();
+                  xResult.xalphaBS = xKinematicFitResult.alphaBS();
+                  xResult.xalphaBSErr = xKinematicFitResult.alphaBSErr();
+                  xResult.xalphaBSXY = xKinematicFitResult.alphaBSXY();
+                  xResult.xalphaBSXYErr = xKinematicFitResult.alphaBSXYErr();
                }
                xVertexSuccess = true;
                xCandidates.push_back(xResult);
@@ -1664,15 +1782,22 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
 
       xlxy[i] = 0;
       xlxyErr[i] = 0;
+      xlz[i] = 0;
+      xlzErr[i] = 0;
+      xl[i] = 0;
+      xlErr[i] = 0;
       xsigLxy[i] = 0;
+      xsigLz[i] = 0;
+      xsigL[i] = 0;
       xalphaBS[i] = 0;
       xalphaBSErr[i] = 0;
+      xalphaBSXY[i] = 0;
+      xalphaBSXYErr[i] = 0;
+
       for (unsigned int j = 0; j < 4; j++)
       {
          mMass[i][j] = 0;
          mMassError[i][j] = 0;
-         mNMCMass[i][j] = 0;
-         mNMCMassError[i][j] = 0;
          mPt[i][j] = 0;
          mEta[i][j] = 0;
          mPhi[i][j] = 0;
@@ -1697,14 +1822,31 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
 
          NMC_mlxyMu[i][j] = 0;
          NMC_mlxyErrMu[i][j] = 0;
+         NMC_mlzMu[i][j] = 0;
+         NMC_mlzErrMu[i][j] = 0;
+         NMC_mlMu[i][j] = 0;
+         NMC_mlErrMu[i][j] = 0;
          NMC_msigLxyMu[i][j] = 0;
+         NMC_msigLzMu[i][j] = 0;
+         NMC_msigLMu[i][j] = 0;
          NMC_malphaBSMu[i][j] = 0;
          NMC_malphaBSErrMu[i][j] = 0;
+         NMC_malphaBSXYMu[i][j] = 0;
+         NMC_malphaBSXYErrMu[i][j] = 0;
+
          NMC_mlxyTrk[i][j] = 0;
          NMC_mlxyErrTrk[i][j] = 0;
+         NMC_mlzTrk[i][j] = 0;
+         NMC_mlzErrTrk[i][j] = 0;
+         NMC_mlTrk[i][j] = 0;
+         NMC_mlErrTrk[i][j] = 0;
          NMC_msigLxyTrk[i][j] = 0;
+         NMC_msigLzTrk[i][j] = 0;
+         NMC_msigLTrk[i][j] = 0;
          NMC_malphaBSTrk[i][j] = 0;
          NMC_malphaBSErrTrk[i][j] = 0;
+         NMC_malphaBSXYTrk[i][j] = 0;
+         NMC_malphaBSXYErrTrk[i][j] = 0;
 
          nMmucand[j] = 0;
          nMtrkcand[j] = 0;
@@ -1746,6 +1888,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::fillDescriptions(edm::ConfigurationDesc
    desc.add<edm::InputTag>("recoTrackMuon", edm::InputTag("recoTrackMuon"));
    desc.add<edm::InputTag>("recoTrack", edm::InputTag("recoTrack"));
    desc.add<edm::InputTag>("recoVertex", edm::InputTag("recoVertex"));
+   desc.add<edm::InputTag>("beamSpot", edm::InputTag("beamSpot"));
    desc.add<edm::InputTag>("TriggerResults");
    desc.add<std::vector<std::string>>("FilterNames");
    desc.add<std::vector<double>>("MMuMass");
@@ -1775,7 +1918,6 @@ void Scout4BRecoSecondaryVertexAnalyzer::fillDescriptions(edm::ConfigurationDesc
    desc.addUntracked<unsigned long long>("maxLoop", 1000000000);
    desc.addUntracked<double>("MMassMin", 1e-2);
    desc.addUntracked<double>("XMassMin", 1e-2);
-   desc.add<edm::InputTag>("beamSpot", edm::InputTag("beamSpot"));
 
    descriptions.add("Scout4BRecoSecondaryVertexAnalyzer", desc);
 }

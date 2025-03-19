@@ -1294,14 +1294,17 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
    {
       indices[i] = i;
    }
-
    unsigned long long loopCounter = 0;
+
    bool done = false;
    while (!done)
    {
       loopCounter++;
       if (loopCounter > max_loop)
+      {
+         cout << "loopCounter > max_loop" << endl;
          break;
+      }
 
       bool process = true;
 
@@ -1341,11 +1344,22 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
 
       if (process)
       {
-         double doca = distanceOfClosestApproach(&trackVec[indices[0]], &trackVec[indices[1]], bFieldHandle);
-         if (doca > 0.05)
+         bool docaFail = false;
+         // 遍历所有粒子对
+         for (unsigned int i = 0; i < NP && !docaFail; ++i)
          {
-            process = false;
+            for (unsigned int j = i + 1; j < NP && !docaFail; ++j)
+            {
+               double doca = distanceOfClosestApproach(
+                   &trackVec[indices[i]],
+                   &trackVec[indices[j]],
+                   bFieldHandle);
+               if (doca > 0.05)
+                  docaFail = true;
+            }
          }
+         if (docaFail)
+            process = false;
       }
 
       KinematicFitResult resultUnconstrained;
@@ -1396,22 +1410,62 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
          }
       }
 
-      // Generate next combination
       int pos = NP - 1;
-      while (pos >= 0 && indices[pos] == nTracks - NP + pos)
-         pos--;
-      if (pos < 0)
+      bool found = false;
+      while (pos >= 0 && !found)
       {
-         done = true;
-      }
-      else
-      {
-         indices[pos]++;
-         for (unsigned int i = pos + 1; i < NP; ++i)
+         // 保存当前值并尝试递增
+         unsigned int current = indices[pos];
+         current++;
+
+         // 查找下一个可用的唯一值
+         while (current < nTracks)
          {
-            indices[i] = indices[i - 1] + 1;
+            bool duplicate = false;
+            for (int i = 0; i < pos; ++i)
+            {
+               if (indices[i] == current)
+               {
+                  duplicate = true;
+                  break;
+               }
+            }
+            if (!duplicate)
+               break;
+            current++;
+         }
+
+         if (current < nTracks)
+         {
+            indices[pos] = current;
+            found = true;
+
+            // 填充后续位置为最小可用值
+            std::vector<bool> used(nTracks, false);
+            for (int i = 0; i <= pos; ++i)
+               used[indices[i]] = true;
+
+            for (unsigned int i = pos + 1; i < NP; ++i)
+            {
+               for (unsigned int j = 0; j < nTracks; ++j)
+               {
+                  if (!used[j])
+                  {
+                     indices[i] = j;
+                     used[j] = true;
+                     break;
+                  }
+               }
+            }
+         }
+         else
+         {
+            pos--; // 进位到前一位
          }
       }
+
+      if (!found)
+         done = true; // 所有排列生成完毕
    }
 
    return std::make_pair(unconstrainedCandidates, massConstrainedCandidates);
@@ -1452,7 +1506,10 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
    while (!doneCandidates)
    {
       if (candLoopCounter > max_loop)
+      {
+         cout << "candLoopCounter > max_loop" << endl;
          break;
+      }
       candLoopCounter++;
 
       bool processCandidate = true;
@@ -1508,9 +1565,9 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
       {
          bool isoFail = false;
          bool docaFail = false;
-         for (unsigned int i = 0; i < NM && docaFail; ++i)
+         for (unsigned int i = 0; i < NM && !docaFail; ++i)
          {
-            for (unsigned int j = i + 1; j < NM && docaFail; ++j)
+            for (unsigned int j = i + 1; j < NM && !docaFail; ++j)
             {
                for (auto idx1 : selectedM[i].trackIndices)
                {
@@ -1531,7 +1588,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
                }
             }
          }
-         if (isoFail && doIso)
+         if ((isoFail && doIso) || docaFail)
             processCandidate = false;
       }
 

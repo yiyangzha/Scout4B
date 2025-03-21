@@ -213,7 +213,7 @@ private:
        const MagneticField &bFieldHandle,
        const unsigned long long max_loop);
 
-   std::vector<XFitResult> performXVertexFit(
+   std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> performXVertexFit(
        std::vector<reco::Track> tracks,
        unsigned int NM,
        const std::vector<std::vector<KinematicFitResult>> &vertexs,
@@ -280,6 +280,7 @@ private:
    edm::Service<TFileService> fs;
 
    TTree *Scout4BTree;
+   TTree *NMC_X_Scout4BTree;
    TTree *NMC_Scout4BTree;
 
    // Define branches
@@ -289,6 +290,7 @@ private:
    UInt_t trigger;
 
    UInt_t nXcand;
+   UInt_t nXcandNMC;
    UInt_t nMmucand[4];
    UInt_t nMtrkcand[4];
 
@@ -306,6 +308,14 @@ private:
    double xChi2[5];
    int xCharge[5];
 
+   double xMassNMC[5];
+   double xMassErrorNMC[5];
+   double xPtNMC[5];
+   double xEtaNMC[5];
+   double xPhiNMC[5];
+   double xChi2NMC[5];
+   int xChargeNMC[5];
+
    double xlxy[5];
    double xlxyErr[5];
    double xlz[5];
@@ -320,6 +330,20 @@ private:
    double xalphaBSXY[5];
    double xalphaBSXYErr[5];
 
+   double xlxyNMC[5];
+   double xlxyErrNMC[5];
+   double xlzNMC[5];
+   double xlzErrNMC[5];
+   double xlNMC[5];
+   double xlErrNMC[5];
+   double xsigLxyNMC[5];
+   double xsigLzNMC[5];
+   double xsigLNMC[5];
+   double xalphaBSNMC[5];
+   double xalphaBSErrNMC[5];
+   double xalphaBSXYNMC[5];
+   double xalphaBSXYErrNMC[5];
+
    // M particle branches
    double mMass[5][4];
    double mMassError[5][4];
@@ -327,6 +351,12 @@ private:
    double mEta[5][4];
    double mPhi[5][4];
    int mCharge[5][4];
+
+   double mMassNMC[5][4];
+   double mPtNMC[5][4];
+   double mEtaNMC[5][4];
+   double mPhiNMC[5][4];
+   int mChargeNMC[5][4];
 
    double NMC_mMassMu[5][4];
    double NMC_mMassErrMu[5][4];
@@ -447,6 +477,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
    clearVars();
 
    Scout4BTree = fs->make<TTree>(Form("%sTree", treename_.c_str()), Form("Tree of %s", treename_.c_str()));
+   NMC_X_Scout4BTree = fs->make<TTree>(Form("NMC_X_%sTree", treename_.c_str()), Form("Tree of %s with no mass constraint", treename_.c_str()));
    NMC_Scout4BTree = fs->make<TTree>(Form("NMC_%sTree", treename_.c_str()), Form("Tree of %s with no mass constraint", treename_.c_str()));
 
    // Define branches
@@ -559,6 +590,40 @@ void Scout4BRecoSecondaryVertexAnalyzer::beginJob()
    NMC_Scout4BTree->Branch("NMC_D_EtaTrk", NMC_dEtaTrk, "NMC_D_EtaTrk[5][4][8]/D");
    NMC_Scout4BTree->Branch("NMC_D_PhiTrk", NMC_dPhiTrk, "NMC_D_PhiTrk[5][4][8]/D");
    NMC_Scout4BTree->Branch("NMC_D_ChargeTrk", NMC_dChargeTrk, "NMC_D_ChargeTrk[5][4][8]/I");
+
+   NMC_X_Scout4BTree->Branch("run", &run, "run/i");
+   NMC_X_Scout4BTree->Branch("event", &event, "event/l");
+   NMC_X_Scout4BTree->Branch("lumiblock", &lumiblock, "lumiblock/i");
+   NMC_X_Scout4BTree->Branch("trigger", &trigger, "trigger/i");
+   NMC_X_Scout4BTree->Branch("nXcandNMC", &nXcandNMC, "nXcandNMC/i");
+
+   NMC_X_Scout4BTree->Branch("X_Mass", xMassNMC, "X_Mass[5]/D");
+   NMC_X_Scout4BTree->Branch("X_MassError", xMassErrorNMC, "X_MassError[5]/D");
+   NMC_X_Scout4BTree->Branch("X_Pt", xPtNMC, "X_Pt[5]/D");
+   NMC_X_Scout4BTree->Branch("X_Eta", xEtaNMC, "X_Eta[5]/D");
+   NMC_X_Scout4BTree->Branch("X_Phi", xPhiNMC, "X_Phi[5]/D");
+   NMC_X_Scout4BTree->Branch("X_Chi2", xChi2NMC, "X_Chi2[5]/D");
+   NMC_X_Scout4BTree->Branch("X_Charge", xChargeNMC, "X_Charge[5]/I");
+
+   NMC_X_Scout4BTree->Branch("X_lxy", xlxyNMC, "X_lxy[5]/D");
+   NMC_X_Scout4BTree->Branch("X_lxyErr", xlxyErrNMC, "X_lxyErr[5]/D");
+   NMC_X_Scout4BTree->Branch("X_lz", xlzNMC, "X_lz[5]/D");
+   NMC_X_Scout4BTree->Branch("X_lzErr", xlzErrNMC, "X_lzErr[5]/D");
+   NMC_X_Scout4BTree->Branch("X_l", xlNMC, "X_l[5]/D");
+   NMC_X_Scout4BTree->Branch("X_lErr", xlErrNMC, "X_lErr[5]/D");
+   NMC_X_Scout4BTree->Branch("X_sigLxy", xsigLxyNMC, "X_sigLxy[5]/D");
+   NMC_X_Scout4BTree->Branch("X_sigLz", xsigLzNMC, "X_sigLz[5]/D");
+   NMC_X_Scout4BTree->Branch("X_sigL", xsigLNMC, "X_sigL[5]/D");
+   NMC_X_Scout4BTree->Branch("X_alphaBS", xalphaBSNMC, "X_alphaBS[5]/D");
+   NMC_X_Scout4BTree->Branch("X_alphaBSErr", xalphaBSErrNMC, "X_alphaBSErr[5]/D");
+   NMC_X_Scout4BTree->Branch("X_alphaBSXY", xalphaBSXYNMC, "X_alphaBSXY[5]/D");
+   NMC_X_Scout4BTree->Branch("X_alphaBSXYErr", xalphaBSXYErrNMC, "X_alphaBSXYErr[5]/D");
+
+   NMC_X_Scout4BTree->Branch("M_Mass", mMassNMC, "M_Mass[5][4]/D");
+   NMC_X_Scout4BTree->Branch("M_Pt", mPtNMC, "M_Pt[5][4]/D");
+   NMC_X_Scout4BTree->Branch("M_Eta", mEtaNMC, "M_Eta[5][4]/D");
+   NMC_X_Scout4BTree->Branch("M_Phi", mPhiNMC, "M_Phi[5][4]/D");
+   NMC_X_Scout4BTree->Branch("M_Charge", mChargeNMC, "M_Charge[5][4]/I");
 }
 
 void Scout4BRecoSecondaryVertexAnalyzer::endJob()
@@ -794,12 +859,12 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       return;
 
    // Sort the M candidates by M's pT
-   for (auto &vec : mCandidatesMu)
+   for (auto &vec : NMC_mCandidatesMu)
    {
       std::sort(vec.begin(), vec.end(), [](const KinematicFitResult &a, const KinematicFitResult &b)
                 { return a.p4().Pt() > b.p4().Pt(); });
    }
-   for (auto &vec : mCandidatesTrk)
+   for (auto &vec : NMC_mCandidatesTrk)
    {
       std::sort(vec.begin(), vec.end(), [](const KinematicFitResult &a, const KinematicFitResult &b)
                 { return a.p4().Pt() > b.p4().Pt(); });
@@ -896,11 +961,11 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 
    // Step 4: Fit X particles from both M particles
    vector<vector<KinematicFitResult>> allMCandidates;
-   for (auto &vec : mCandidatesMu)
+   for (auto &vec : NMC_mCandidatesMu)
    {
       allMCandidates.push_back(vec);
    }
-   for (auto &vec : mCandidatesTrk)
+   for (auto &vec : NMC_mCandidatesTrk)
    {
       allMCandidates.push_back(vec);
    }
@@ -909,10 +974,10 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    unsigned int totalM = NMmu_ + NMtrk_;
 
    // Add goodTrackMuons to goodTracks end
-   // and edit the index in mCandidatesMu to match the new goodTracks
+   // and edit the index in NMC_mCandidatesMu to match the new goodTracks
    for (unsigned int i = 0; i < NMmu_; i++)
    {
-      for (auto &v : mCandidatesMu[i])
+      for (auto &v : NMC_mCandidatesMu[i])
       {
          for (unsigned int j = 0; j < v.trackIndices.size(); j++)
          {
@@ -942,67 +1007,121 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       }
    }
 
-   vector<XFitResult> xCandidates = performXVertexFit(goodTracks, totalM, allMCandidates, XCharge_, XMass_, XMassWin_, vProbMin_, mMassForX, mMassErrForX, XMassMin_, doIso_, PIso_, bFieldHandle, maxLoop_);
-   if (xCandidates.empty())
-      return;
+   std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> xCandidatesAll = performXVertexFit(goodTracks, totalM, allMCandidates, XCharge_, XMass_, XMassWin_, vProbMin_, mMassForX, mMassErrForX, XMassMin_, doIso_, PIso_, bFieldHandle, maxLoop_);
 
-   // Step 4: Fill the tree
+   std::vector<KinematicFitResult> xCandidatesNMC = xCandidatesAll.second;
 
-   // Sort the X candidates by X's pT
-   std::sort(xCandidates.begin(), xCandidates.end(), [](const XFitResult &a, const XFitResult &b)
-             { return a.xMotherP4.Pt() > b.xMotherP4.Pt(); });
-
-   // Cut first 5 X candidates if exist
-   if (xCandidates.size() > 5)
-      xCandidates.resize(5);
-   nXcand = xCandidates.size();
-
-   // Fill the tree
-   for (unsigned int i = 0; i < nXcand; i++)
+   // Fill NMC_X_Scout4BTree tree
+   if (!xCandidatesNMC.empty())
    {
-      xMass[i] = xCandidates[i].xMotherP4.M();
-      xMassError[i] = xCandidates[i].xMassError;
-      xPt[i] = xCandidates[i].xMotherP4.Pt();
-      xEta[i] = xCandidates[i].xMotherP4.Eta();
-      xPhi[i] = xCandidates[i].xMotherP4.Phi();
-      xChi2[i] = xCandidates[i].normChi2;
-      xCharge[i] = xCandidates[i].xMotherCharge;
+      // Sort the X candidates by X's pT
+      std::sort(xCandidatesNMC.begin(), xCandidatesNMC.end(), [](const KinematicFitResult &a, const KinematicFitResult &b)
+                { return a.p4().Pt() > b.p4().Pt(); });
 
-      xlxy[i] = xCandidates[i].xlxy;
-      xlxyErr[i] = xCandidates[i].xlxyErr;
-      xlz[i] = xCandidates[i].xlz;
-      xlzErr[i] = xCandidates[i].xlzErr;
-      xl[i] = xCandidates[i].xl;
-      xlErr[i] = xCandidates[i].xlErr;
-      xsigLxy[i] = xCandidates[i].xsigLxy;
-      xsigLz[i] = xCandidates[i].xsigLz;
-      xsigL[i] = xCandidates[i].xsigL;
-      xalphaBS[i] = xCandidates[i].xalphaBS;
-      xalphaBSErr[i] = xCandidates[i].xalphaBSErr;
-      xalphaBSXY[i] = xCandidates[i].xalphaBSXY;
-      xalphaBSXYErr[i] = xCandidates[i].xalphaBSXYErr;
+      // Cut first 5 X candidates if exist
+      if (xCandidatesNMC.size() > 5)
+         xCandidatesNMC.resize(5);
+      nXcandNMC = xCandidatesNMC.size();
 
-      for (unsigned int j = 0; j < xCandidates[i].mMother.size(); j++)
+      for (unsigned int i = 0; i < nXcandNMC; i++)
       {
-         mMass[i][j] = xCandidates[i].mMother[j].first.M();
-         mMassError[i][j] = xCandidates[i].mMassError[j];
-         mPt[i][j] = xCandidates[i].mMother[j].first.Pt();
-         mEta[i][j] = xCandidates[i].mMother[j].first.Eta();
-         mPhi[i][j] = xCandidates[i].mMother[j].first.Phi();
-         mCharge[i][j] = xCandidates[i].mMother[j].second;
+         xMassNMC[i] = xCandidatesNMC[i].p4().M();
+         xMassErrorNMC[i] = xCandidatesNMC[i].massErr();
+         xPtNMC[i] = xCandidatesNMC[i].p4().Pt();
+         xEtaNMC[i] = xCandidatesNMC[i].p4().Eta();
+         xPhiNMC[i] = xCandidatesNMC[i].p4().Phi();
+         xChi2NMC[i] = xCandidatesNMC[i].chi2() / (double)xCandidatesNMC[i].ndof();
+         xChargeNMC[i] = xCandidatesNMC[i].charge_;
 
-         for (unsigned int k = 0; k < xCandidates[i].mDaughter[j].first.size(); k++)
+         xlxyNMC[i] = xCandidatesNMC[i].lxy();
+         xlxyErrNMC[i] = xCandidatesNMC[i].lxyErr();
+         xlzNMC[i] = xCandidatesNMC[i].lz();
+         xlzErrNMC[i] = xCandidatesNMC[i].lzErr();
+         xlNMC[i] = xCandidatesNMC[i].l();
+         xlErrNMC[i] = xCandidatesNMC[i].lErr();
+         xsigLxyNMC[i] = xCandidatesNMC[i].sigLxy();
+         xsigLzNMC[i] = xCandidatesNMC[i].sigLz();
+         xsigLNMC[i] = xCandidatesNMC[i].sigL();
+         xalphaBSNMC[i] = xCandidatesNMC[i].alphaBS();
+         xalphaBSErrNMC[i] = xCandidatesNMC[i].alphaBSErr();
+         xalphaBSXYNMC[i] = xCandidatesNMC[i].alphaBSXY();
+         xalphaBSXYErrNMC[i] = xCandidatesNMC[i].alphaBSXYErr();
+
+         // Access mothers
+         for (unsigned int j = 0; j < xCandidatesNMC[i].number_of_daughters(); j++)
          {
-            dMass[i][j][k] = xCandidates[i].mDaughter[j].first[k].M();
-            dPt[i][j][k] = xCandidates[i].mDaughter[j].first[k].Pt();
-            dEta[i][j][k] = xCandidates[i].mDaughter[j].first[k].Eta();
-            dPhi[i][j][k] = xCandidates[i].mDaughter[j].first[k].Phi();
-            dCharge[i][j][k] = xCandidates[i].mDaughter[j].second[k];
+            mMassNMC[i][j] = xCandidatesNMC[i].dau_p4(j).M();
+            mPtNMC[i][j] = xCandidatesNMC[i].dau_p4(j).Pt();
+            mEtaNMC[i][j] = xCandidatesNMC[i].dau_p4(j).Eta();
+            mPhiNMC[i][j] = xCandidatesNMC[i].dau_p4(j).Phi();
+            mChargeNMC[i][j] = xCandidatesNMC[i].dau_charge_[j];
          }
       }
+
+      NMC_X_Scout4BTree->Fill();
    }
 
-   Scout4BTree->Fill();
+   std::vector<XFitResult> xCandidates = xCandidatesAll.first;
+   if (!xCandidates.empty())
+   {
+      // Step 4: Fill the tree
+
+      // Sort the X candidates by X's pT
+      std::sort(xCandidates.begin(), xCandidates.end(), [](const XFitResult &a, const XFitResult &b)
+                { return a.xMotherP4.Pt() > b.xMotherP4.Pt(); });
+
+      // Cut first 5 X candidates if exist
+      if (xCandidates.size() > 5)
+         xCandidates.resize(5);
+      nXcand = xCandidates.size();
+
+      // Fill the tree
+      for (unsigned int i = 0; i < nXcand; i++)
+      {
+         xMass[i] = xCandidates[i].xMotherP4.M();
+         xMassError[i] = xCandidates[i].xMassError;
+         xPt[i] = xCandidates[i].xMotherP4.Pt();
+         xEta[i] = xCandidates[i].xMotherP4.Eta();
+         xPhi[i] = xCandidates[i].xMotherP4.Phi();
+         xChi2[i] = xCandidates[i].normChi2;
+         xCharge[i] = xCandidates[i].xMotherCharge;
+
+         xlxy[i] = xCandidates[i].xlxy;
+         xlxyErr[i] = xCandidates[i].xlxyErr;
+         xlz[i] = xCandidates[i].xlz;
+         xlzErr[i] = xCandidates[i].xlzErr;
+         xl[i] = xCandidates[i].xl;
+         xlErr[i] = xCandidates[i].xlErr;
+         xsigLxy[i] = xCandidates[i].xsigLxy;
+         xsigLz[i] = xCandidates[i].xsigLz;
+         xsigL[i] = xCandidates[i].xsigL;
+         xalphaBS[i] = xCandidates[i].xalphaBS;
+         xalphaBSErr[i] = xCandidates[i].xalphaBSErr;
+         xalphaBSXY[i] = xCandidates[i].xalphaBSXY;
+         xalphaBSXYErr[i] = xCandidates[i].xalphaBSXYErr;
+
+         for (unsigned int j = 0; j < xCandidates[i].mMother.size(); j++)
+         {
+            mMass[i][j] = xCandidates[i].mMother[j].first.M();
+            mMassError[i][j] = xCandidates[i].mMassError[j];
+            mPt[i][j] = xCandidates[i].mMother[j].first.Pt();
+            mEta[i][j] = xCandidates[i].mMother[j].first.Eta();
+            mPhi[i][j] = xCandidates[i].mMother[j].first.Phi();
+            mCharge[i][j] = xCandidates[i].mMother[j].second;
+
+            for (unsigned int k = 0; k < xCandidates[i].mDaughter[j].first.size(); k++)
+            {
+               dMass[i][j][k] = xCandidates[i].mDaughter[j].first[k].M();
+               dPt[i][j][k] = xCandidates[i].mDaughter[j].first[k].Pt();
+               dEta[i][j][k] = xCandidates[i].mDaughter[j].first[k].Eta();
+               dPhi[i][j][k] = xCandidates[i].mDaughter[j].first[k].Phi();
+               dCharge[i][j][k] = xCandidates[i].mDaughter[j].second[k];
+            }
+         }
+      }
+
+      Scout4BTree->Fill();
+   }
 
    // Print xCandidates information for debug
    /* for (unsigned int i = 0; i < xCandidates.size(); i++)
@@ -1471,7 +1590,7 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
    return std::make_pair(unconstrainedCandidates, massConstrainedCandidates);
 }
 
-std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
+std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
     std::vector<reco::Track> tracks,
     unsigned int NM,
     const std::vector<std::vector<KinematicFitResult>> &vertexs,
@@ -1490,13 +1609,14 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
    // Input checks
    if (MMass.size() != NM || MMassErr.size() != NM || std::abs(XCharge) > int(NM) || vertexs.size() < NM)
    {
-      return std::vector<XFitResult>();
+      return std::make_pair(std::vector<XFitResult>(), std::vector<KinematicFitResult>());
    }
    std::vector<reco::Track> &trackVec = tracks;
    if (trackVec.empty())
-      return std::vector<XFitResult>();
+      return std::make_pair(std::vector<XFitResult>(), std::vector<KinematicFitResult>());
 
    std::vector<XFitResult> xCandidates;
+   std::vector<KinematicFitResult> xNoMassFitResults; // 用于存储不加Mass Constraint的X拟合结果
 
    // Cartesian product over each vertex group
    std::vector<unsigned int> candIndices(NM, 0);
@@ -1590,6 +1710,62 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
          }
          if ((isoFail && doIso) || docaFail)
             processCandidate = false;
+      }
+
+      // Fit all M particles together to X particle without Mass Constraint
+      // 新增部分：使用KinematicFitter对selectedM所有粒子的D粒子进行X级拟合（不加Mass Constraint）
+      std::vector<int> mCharge;
+      if (processCandidate)
+      {
+         KinematicFitResult xKinematicFitResult_noMass;
+         RefCountedKinematicTree xKinematicFitTree_noMass;
+         bool xFitNoMassSuccess = true;
+         try
+         {
+            vector<RefCountedKinematicParticle> mParticles;
+            for (unsigned int i = 0; i < NM; ++i)
+            {
+               mParticles.push_back(selectedM[i].particle());
+               mCharge.push_back(selectedM[i].charge_);
+            }
+
+            try
+            {
+               xKinematicFitTree_noMass = KinematicParticleVertexFitter().fit(mParticles);
+            }
+            catch (const std::exception &e)
+            {
+               xFitNoMassSuccess = false;
+            }
+
+            if (xFitNoMassSuccess && xKinematicFitTree_noMass->isValid())
+            {
+               xKinematicFitResult_noMass.set_tree(xKinematicFitTree_noMass);
+               xKinematicFitResult_noMass.postprocess(*beamSpot_);
+               // 设置track indices为所有M候选的track indices合并结果
+               std::vector<unsigned int> combinedIndices;
+               for (unsigned int i = 0; i < selectedM.size(); ++i)
+               {
+                  for (auto idx : selectedM[i].trackIndices)
+                     combinedIndices.push_back(idx);
+               }
+               xKinematicFitResult_noMass.trackIndices = combinedIndices;
+               xKinematicFitResult_noMass.charge_ = XCharge;
+               xKinematicFitResult_noMass.dau_charge_ = mCharge;
+            }
+            else
+            {
+               xFitNoMassSuccess = false;
+            }
+         }
+         catch (const std::exception &e)
+         {
+            xFitNoMassSuccess = false;
+         }
+         if (xFitNoMassSuccess)
+         {
+            xNoMassFitResults.push_back(xKinematicFitResult_noMass);
+         }
       }
 
       // Apply mass constraint fitting for each M candidate
@@ -1726,7 +1902,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
          fittedMParticles.push_back(constrainedM);
       }
 
-      // Use new fitted M particles for X-level vertex fitting
+      // Use new fitted M particles for X-level vertex fitting with mass constraint
       bool xVertexSuccess = true;
       if (processCandidate && massConstraintSuccess)
       {
@@ -1816,7 +1992,7 @@ std::vector<XFitResult> Scout4BRecoSecondaryVertexAnalyzer::performXVertexFit(
       }
    }
 
-   return xCandidates;
+   return std::make_pair(xCandidates, xNoMassFitResults);
 }
 
 void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
@@ -1836,6 +2012,14 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
       xChi2[i] = 0;
       xCharge[i] = 0;
 
+      xMassNMC[i] = 0;
+      xMassErrorNMC[i] = 0;
+      xPtNMC[i] = 0;
+      xEtaNMC[i] = 0;
+      xPhiNMC[i] = 0;
+      xChi2NMC[i] = 0;
+      xChargeNMC[i] = 0;
+
       xlxy[i] = 0;
       xlxyErr[i] = 0;
       xlz[i] = 0;
@@ -1850,6 +2034,20 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
       xalphaBSXY[i] = 0;
       xalphaBSXYErr[i] = 0;
 
+      xlxyNMC[i] = 0;
+      xlxyErrNMC[i] = 0;
+      xlzNMC[i] = 0;
+      xlzErrNMC[i] = 0;
+      xlNMC[i] = 0;
+      xlErrNMC[i] = 0;
+      xsigLxyNMC[i] = 0;
+      xsigLzNMC[i] = 0;
+      xsigLNMC[i] = 0;
+      xalphaBSNMC[i] = 0;
+      xalphaBSErrNMC[i] = 0;
+      xalphaBSXYNMC[i] = 0;
+      xalphaBSXYErrNMC[i] = 0;
+
       for (unsigned int j = 0; j < 4; j++)
       {
          mMass[i][j] = 0;
@@ -1858,6 +2056,12 @@ void Scout4BRecoSecondaryVertexAnalyzer::clearVars()
          mEta[i][j] = 0;
          mPhi[i][j] = 0;
          mCharge[i][j] = 0;
+
+         mMassNMC[i][j] = 0;
+         mPtNMC[i][j] = 0;
+         mEtaNMC[i][j] = 0;
+         mPhiNMC[i][j] = 0;
+         mChargeNMC[i][j] = 0;
 
          NMC_mMassMu[i][j] = 0;
          NMC_mMassTrk[i][j] = 0;

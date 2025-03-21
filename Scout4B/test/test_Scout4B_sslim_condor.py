@@ -7,7 +7,7 @@ from FWCore.ParameterSet.VarParsing import VarParsing
 process = cms.Process('BScoutNANO')
 options = VarParsing('analysis')
 options.parseArguments()
-options.outputFile = 'Scout4B_sslim.root'
+options.outputFile = 'Scout4B.root'
 
 assert len(options.inputFiles) == 1, 'Only run interactively with file len=1'
 print("Running", options.inputFiles)

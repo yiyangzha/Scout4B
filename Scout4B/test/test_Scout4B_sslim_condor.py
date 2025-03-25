@@ -82,7 +82,7 @@ process.Scout4BScoutTrkFilter = cms.EDFilter("TrackCountFilter",
 process.offlineBeamSpot = cms.EDProducer("BeamSpotProducer")
 
 # Bs -> J/psi phi -> mu+ mu- K+ K-
-process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("BsJpsiPhiMuMuKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),

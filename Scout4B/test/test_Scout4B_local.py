@@ -91,7 +91,7 @@ process.Scout4BScoutTrkFilter = cms.EDFilter("TrackCountFilter",
 process.offlineBeamSpot = cms.EDProducer("BeamSpotProducer")
 
 # Bs -> J/psi phi -> mu+ mu- K+ K-
-process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("BsJpsiPhiMuMuKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -141,7 +141,7 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
 
 
 # Bs -> Phi Phi -> K+ K- K+ K-
-process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("BsPhiPhiKKKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -191,7 +191,7 @@ process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
 
 
 # B0 -> J/psi K*0 -> mu+ mu- K+ pi-
-process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("B0JpsiKstarMuMuKpPim"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -241,7 +241,7 @@ process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
 
 
 # B0 -> J/psi K*0 -> mu+ mu- K- pi+
-process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("B0JpsiKstarMuMuKmPip"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -291,7 +291,7 @@ process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAna
 
 
 # D0 -> K+ pi-
-process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(False),
     treename = cms.untracked.string("D0KpPim"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -341,7 +341,7 @@ process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyz
 
 
 # D0 -> K+ pi-
-process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
+process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(False),
     treename = cms.untracked.string("D0KmPip"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),

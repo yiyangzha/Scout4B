@@ -28,8 +28,8 @@ process.load("FWCore.MessageService.MessageLogger_cfi")
 #process.GlobalTag = GlobalTag(process.GlobalTag, '124X_dataRun3_PromptAnalysis_v2', '') #2022 FG PromptReco
 process.GlobalTag = GlobalTag(process.GlobalTag, '130X_dataRun3_PromptAnalysis_v1', '') #2023 CD ReReco
 
-process.MessageLogger.cerr.FwkSummary.reportEvery = 1000
-process.MessageLogger.cerr.FwkReport.reportEvery = 1000
+process.MessageLogger.cerr.FwkSummary.reportEvery = 10000
+process.MessageLogger.cerr.FwkReport.reportEvery = 10000
 #process.MessageLogger.cerr.threshold = 'ERROR'
 
 process.maxEvents = cms.untracked.PSet( 
@@ -55,8 +55,8 @@ process.options = cms.untracked.PSet(
     forceEventSetupCacheClearOnNewRun = cms.untracked.bool(False),
     numberOfConcurrentLuminosityBlocks = cms.untracked.uint32(0),
     numberOfConcurrentRuns = cms.untracked.uint32(1),
-    numberOfStreams = cms.untracked.uint32(4),
-    numberOfThreads = cms.untracked.uint32(4),
+    numberOfStreams = cms.untracked.uint32(2),
+    numberOfThreads = cms.untracked.uint32(2),
     printDependencies = cms.untracked.bool(False),
     throwIfIllegalParameter = cms.untracked.bool(True),
     wantSummary = cms.untracked.bool(False),
@@ -130,11 +130,15 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnal
 )
 
 process.convert_step = cms.Path(process.Scout4BConverter)
-process.filter_step = cms.Path(process.Scout4BScoutTrkFilter)
+process.muonfilter_step = cms.Path(process.Scout4BScoutMuFilter)
+process.trkfilter_step = cms.Path(process.Scout4BScoutTrkFilter)
+process.bemaspot_step = cms.Path(process.offlineBeamSpot)
 process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
 
 process.schedule = cms.Schedule(
     process.convert_step,
-    process.filter_step,
+    process.muonfilter_step,
+    process.trkfilter_step,
+    process.bemaspot_step,
     process.vertexFinderBsJP
 )

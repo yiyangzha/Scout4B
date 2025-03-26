@@ -1223,7 +1223,7 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::KinematicFitter(std::vect
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
       float mass = masses[i];
-      float massErr = mass / 100.0;
+      float massErr = mass / 1000.0;
       particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 
@@ -1260,7 +1260,7 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::MCKinematicFitter(std::ve
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
       float mass = masses[i];
-      float massErr = mass / 100.0;
+      float massErr = mass / 1000.0;
       particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 

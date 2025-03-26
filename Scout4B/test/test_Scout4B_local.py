@@ -1,10 +1,10 @@
 import FWCore.ParameterSet.Config as cms
 from PhysicsTools.NanoAOD.common_cff import *
-from RecoVertex.BeamSpotProducer.BeamSpotFakeParameters_cfi import *
+from RecoMuon.TrackingTools.MuonServiceProxy_cff import *
 from Configuration.AlCa.GlobalTag import GlobalTag
 import time
 
-process = cms.Process('BScoutNANO')
+process = cms.Process('BPHScoutNANO')
 # set file name according time
 ouput_filename = 'Scout4B_' + time.strftime("%Y%m%d-%H%M%S") + '.root'
 
@@ -13,7 +13,8 @@ process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')
 process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
-process.load('Configuration.StandardSequences.MagneticField_AutoFromDBCurrent_cff')
+process.load('Configuration.StandardSequences.MagneticField_38T_cff')
+process.load('Configuration.StandardSequences.Reconstruction_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 process.load("FWCore.MessageService.MessageLogger_cfi")
 
@@ -22,8 +23,8 @@ process.load("FWCore.MessageService.MessageLogger_cfi")
 #process.GlobalTag = GlobalTag(process.GlobalTag, '124X_dataRun3_PromptAnalysis_v2', '') #2022 FG PromptReco
 process.GlobalTag = GlobalTag(process.GlobalTag, '130X_dataRun3_PromptAnalysis_v1', '') #2023 CD ReReco
 
-process.MessageLogger.cerr.FwkSummary.reportEvery = 10000
-process.MessageLogger.cerr.FwkReport.reportEvery = 10000
+process.MessageLogger.cerr.FwkSummary.reportEvery = 1000
+process.MessageLogger.cerr.FwkReport.reportEvery = 1000
 #process.MessageLogger.cerr.threshold = 'ERROR'
 
 
@@ -31,10 +32,10 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 10000
 process.maxEvents = cms.untracked.PSet( 
     input = cms.untracked.int32(-1) # -1 
 )
-# skip first 10000 events
+
 process.source = cms.Source("PoolSource",
         fileNames = cms.untracked.vstring(
-        'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/4298f9f5-a746-4bf5-99cd-ea491f4e678c.root',
+        'root://cms-xrd-global.cern.ch/' + '/store/mc/RunIII2024Summer24MiniAOD/BsToJPsiPhi-JPsiToMuMu-PhiToKK_Par-SoftQCDnonD_TuneCP5_13p6TeV_pythia8-evtgen/MINIAODSIM/140X_mcRun3_2024_realistic_v26-v2/110000/03bfca1b-ea3b-43f3-a87b-5466d7a48ae2.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/4f516e00-43f7-4b65-ade1-490a3590faac.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/5d476985-1a6d-4bd2-8206-f69c068908ec.root',
         #'root://cms-xrd-global.cern.ch/' + '/store/data/Run2024F/ScoutingPFRun3/HLTSCOUT/v1/000/382/299/00000/6b90b87c-76a8-4dcd-91d7-117150371df1.root',
@@ -62,8 +63,8 @@ process.options = cms.untracked.PSet(
     forceEventSetupCacheClearOnNewRun = cms.untracked.bool(False),
     numberOfConcurrentLuminosityBlocks = cms.untracked.uint32(0),
     numberOfConcurrentRuns = cms.untracked.uint32(1),
-    numberOfStreams = cms.untracked.uint32(32),
-    numberOfThreads = cms.untracked.uint32(32),
+    numberOfStreams = cms.untracked.uint32(2),
+    numberOfThreads = cms.untracked.uint32(2),
     printDependencies = cms.untracked.bool(False),
     throwIfIllegalParameter = cms.untracked.bool(True),
     wantSummary = cms.untracked.bool(False),
@@ -76,22 +77,22 @@ process.Scout4BConverter = cms.EDProducer("Scout4BScoutToRecoProducer",
     scoutingPrimaryVertex = cms.InputTag("hltScoutingPrimaryVertexPacker", "primaryVtx")
 )
 
-'''
+
 process.Scout4BScoutMuFilter = cms.EDFilter("TrackCountFilter",
     src       = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
     minNumber = cms.uint32(2)
 )
-'''
+
 
 process.Scout4BScoutTrkFilter = cms.EDFilter("TrackCountFilter",
     src       = cms.InputTag("Scout4BConverter", "recoTracks"),
     minNumber = cms.uint32(2)
 )
 
-process.offlineBeamSpot = cms.EDProducer("BeamSpotProducer")
+#
 
 # Bs -> J/psi phi -> mu+ mu- K+ K-
-process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
+process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("BsJpsiPhiMuMuKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -126,7 +127,7 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCA
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -139,7 +140,7 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCA
     XMassMin = cms.untracked.double(1e-2),
 )
 
-
+'''
 # Bs -> Phi Phi -> K+ K- K+ K-
 process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
     multiM = cms.untracked.bool(True),
@@ -176,7 +177,7 @@ process.Scout4BVertexFinderBsPP  = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMC
     NPtrk = cms.vuint32(2, 2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -226,7 +227,7 @@ process.Scout4BVertexFinderB0JK = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCA
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -276,7 +277,7 @@ process.Scout4BVertexFinderB0JKB = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMC
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -326,7 +327,7 @@ process.Scout4BVertexFinderD0 = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAna
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -376,7 +377,7 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAn
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -389,25 +390,25 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAn
     XMassMin = cms.untracked.double(1e-2),
 )
 #process.add_(cms.Service("InitRootHandlers", DebugLevel = cms.untracked.int32(1)))
-
+'''
 process.convert_step = cms.Path(process.Scout4BConverter)
 process.filter_step = cms.Path(process.Scout4BScoutTrkFilter)
-process.beamspot_step = cms.Path(process.offlineBeamSpot)
 process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
+'''
 process.vertexFinderBsPP = cms.Path(process.Scout4BVertexFinderBsPP)
 process.vertexFinderB0JK = cms.Path(process.Scout4BVertexFinderB0JK)
 process.vertexFinderB0JKB = cms.Path(process.Scout4BVertexFinderB0JKB)
 process.vertexFinderD0 = cms.Path(process.Scout4BVertexFinderD0)
 process.vertexFinderD0B = cms.Path(process.Scout4BVertexFinderD0B)
+'''
 
 process.schedule = cms.Schedule(
     process.convert_step,
     process.filter_step,
-    process.beamspot_step,
     process.vertexFinderBsJP,
-    process.vertexFinderBsPP,
-    process.vertexFinderB0JK,
-    process.vertexFinderB0JKB,
-    process.vertexFinderD0,
-    process.vertexFinderD0B
+    #process.vertexFinderBsPP,
+    #process.vertexFinderB0JK,
+    #process.vertexFinderB0JKB,
+    #process.vertexFinderD0,
+    #process.vertexFinderD0B
 )

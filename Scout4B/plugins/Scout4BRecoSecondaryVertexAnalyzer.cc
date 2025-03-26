@@ -638,10 +638,9 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 {
    // Init the branches
    clearVars();
+   const MagneticField* bFieldHandle = &iSetup.getData(magneticFieldToken_);
 
-   const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
-
-   AnalyticalImpactPointExtrapolator extrapolator(&bFieldHandle);
+   AnalyticalImpactPointExtrapolator extrapolator(bFieldHandle);
    impactPointExtrapolator = &extrapolator;
 
    edm::Handle<reco::BeamSpot> beamSpotHandle;
@@ -724,9 +723,10 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    }
    if (recoTrackMuon->size() < nMuInNeed || recoTrack->size() < nTrkInNeed)
    {
-      //  cout << "Input collections too small: " << recoTrackMuon->size() << " " << recoTrack->size() << endl;
+      // cout << "Input collections too small: " << recoTrackMuon->size() << " " << recoTrack->size() << endl;
       return;
    }
+   // cout << "Input collections: " << recoTrackMuon->size() << " " << recoTrack->size() << endl;
 
    // Track filter
    std::vector<reco::Track> goodTracks;
@@ -759,7 +759,10 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    }
 
    if (goodTracks.size() < nTrkInNeed || goodTrackMuons.size() < nMuInNeed)
+   {
+      // cout << "Good tracks or muons too few: " << goodTracks.size() << " " << goodTrackMuons.size() << endl;
       return;
+   }
 
    // Unflat TrkMassFlat, TrkMassErrFlat and MuChargeFlat
    std::vector<std::vector<double>> TrkMass_v_;
@@ -805,12 +808,13 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       // 构造用于拟合的 particle 质量及误差向量，长度为 NPmu_[i]，取输入的 MuMass 参数（保持不变）
       vector<double> PMass_mu(NPmu_[i], MuMass_);
       vector<double> PMassErr_mu(NPmu_[i], MuMassErr_);
+
       std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> res = performVertexFit(goodTrackMuons,
                                                                                                          NPmu_[i],
                                                                                                          MChargeMu_[i],
                                                                                                          MMuMass_[i],
                                                                                                          MMuMassErr_[i],
-                                                                                                         MMassWin_,
+                                                                                                         MMassWin_ * 4.0,
                                                                                                          vProbMin_,
                                                                                                          PMass_mu,
                                                                                                          PMassErr_mu,
@@ -818,7 +822,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
                                                                                                          MMassMin_,
                                                                                                          doIso_,
                                                                                                          PIso_,
-                                                                                                         bFieldHandle,
+                                                                                                         *bFieldHandle,
                                                                                                          maxLoop_);
       if (res.second.empty())
          return;
@@ -834,6 +838,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
    vector<vector<KinematicFitResult>> NMC_mCandidatesTrk;
    for (unsigned int i = 0; i < NMtrk_; i++)
    {
+
       std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> res = performVertexFit(goodTracks,
                                                                                                          NPtrk_[i],
                                                                                                          MChargetrk_[i],
@@ -847,7 +852,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
                                                                                                          MMassMin_,
                                                                                                          doIso_,
                                                                                                          PIso_,
-                                                                                                         bFieldHandle,
+                                                                                                         *bFieldHandle,
                                                                                                          maxLoop_);
       if (res.second.empty())
          return;
@@ -961,11 +966,11 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
 
    // Step 4: Fit X particles from both M particles
    vector<vector<KinematicFitResult>> allMCandidates;
-   for (auto &vec : NMC_mCandidatesMu)
+   for (auto &vec : mCandidatesMu)
    {
       allMCandidates.push_back(vec);
    }
-   for (auto &vec : NMC_mCandidatesTrk)
+   for (auto &vec : mCandidatesTrk)
    {
       allMCandidates.push_back(vec);
    }
@@ -1007,7 +1012,7 @@ void Scout4BRecoSecondaryVertexAnalyzer::analyze(edm::Event const &iEvent, edm::
       }
    }
 
-   std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> xCandidatesAll = performXVertexFit(goodTracks, totalM, allMCandidates, XCharge_, XMass_, XMassWin_, vProbMin_, mMassForX, mMassErrForX, XMassMin_, doIso_, PIso_, bFieldHandle, maxLoop_);
+   std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> xCandidatesAll = performXVertexFit(goodTracks, totalM, allMCandidates, XCharge_, XMass_, XMassWin_, vProbMin_, mMassForX, mMassErrForX, XMassMin_, doIso_, PIso_, *bFieldHandle, maxLoop_);
 
    std::vector<KinematicFitResult> xCandidatesNMC = xCandidatesAll.second;
 
@@ -1218,7 +1223,7 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::KinematicFitter(std::vect
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
       float mass = masses[i];
-      float massErr = mass / 1000.0;
+      float massErr = mass / 100.0;
       particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 
@@ -1255,7 +1260,7 @@ KinematicFitResult Scout4BRecoSecondaryVertexAnalyzer::MCKinematicFitter(std::ve
    {
       const reco::TransientTrack tt(*trks[i], &bFieldHandle);
       float mass = masses[i];
-      float massErr = mass / 1000.0;
+      float massErr = mass / 100.0;
       particles.push_back(factory.particle(tt, mass, chi, ndf, massErr));
    }
 
@@ -1400,6 +1405,7 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
    if (PMass.size() != NP || PMassErr.size() != NP || tracks.size() < NP || std::abs(MCharge) > int(NP))
    {
       return std::make_pair(std::vector<KinematicFitResult>(), std::vector<KinematicFitResult>());
+      cout << "PMass.size() != NP || PMassErr.size() != NP || tracks.size() < NP || std::abs(MCharge) > int(NP)" << endl;
    }
 
    std::vector<KinematicFitResult> unconstrainedCandidates;
@@ -1478,7 +1484,10 @@ std::pair<std::vector<KinematicFitResult>, std::vector<KinematicFitResult>> Scou
             }
          }
          if (docaFail)
-            process = false;
+         {
+            // cout << "docaFail" << endl;
+            // process = false;
+         }
       }
 
       KinematicFitResult resultUnconstrained;
@@ -1712,6 +1721,7 @@ std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> Scout4BRecoS
             processCandidate = false;
       }
 
+      /*
       // Fit all M particles together to X particle without Mass Constraint
       // 新增部分：使用KinematicFitter对selectedM所有粒子的D粒子进行X级拟合（不加Mass Constraint）
       std::vector<int> mCharge;
@@ -1767,6 +1777,7 @@ std::pair<std::vector<XFitResult>, std::vector<KinematicFitResult>> Scout4BRecoS
             xNoMassFitResults.push_back(xKinematicFitResult_noMass);
          }
       }
+      */
 
       // Apply mass constraint fitting for each M candidate
       bool massConstraintSuccess = true;

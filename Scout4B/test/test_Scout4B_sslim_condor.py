@@ -1,10 +1,10 @@
 import FWCore.ParameterSet.Config as cms
 from PhysicsTools.NanoAOD.common_cff import *
-from RecoVertex.BeamSpotProducer.BeamSpotFakeParameters_cfi import *
+from RecoMuon.TrackingTools.MuonServiceProxy_cff import *
 from Configuration.AlCa.GlobalTag import GlobalTag
 from FWCore.ParameterSet.VarParsing import VarParsing
 
-process = cms.Process('BScoutNANO')
+process = cms.Process('BPHScoutNANO')
 options = VarParsing('analysis')
 options.parseArguments()
 options.outputFile = 'Scout4B.root'
@@ -18,7 +18,8 @@ process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')
 process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
-process.load('Configuration.StandardSequences.MagneticField_AutoFromDBCurrent_cff')
+process.load('Configuration.StandardSequences.MagneticField_38T_cff')
+process.load('Configuration.StandardSequences.Reconstruction_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 process.load("FWCore.MessageService.MessageLogger_cfi")
 
@@ -79,10 +80,8 @@ process.Scout4BScoutTrkFilter = cms.EDFilter("TrackCountFilter",
     minNumber = cms.uint32(2)
 )
 
-process.offlineBeamSpot = cms.EDProducer("BeamSpotProducer")
-
 # Bs -> J/psi phi -> mu+ mu- K+ K-
-process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCAnalyzer",
+process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnalyzer",
     multiM = cms.untracked.bool(True),
     treename = cms.untracked.string("BsJpsiPhiMuMuKK"),
     recoTrackMuon = cms.InputTag("Scout4BConverter", "recoTrackMuons"),
@@ -117,7 +116,7 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCA
     NPtrk = cms.vuint32(2),
     XMass = cms.untracked.double(0.0),
     XMassWin = cms.untracked.double(1000.0),
-    MMassWin = cms.untracked.double(0.5),
+    MMassWin = cms.untracked.double(0.2),
     XCharge = cms.int32(0),
     MChargeMu = cms.vint32(0),
     MChargetrk = cms.vint32(0),
@@ -132,12 +131,10 @@ process.Scout4BVertexFinderBsJP = cms.EDAnalyzer("Scout4BRecoSecondaryVertexNMCA
 
 process.convert_step = cms.Path(process.Scout4BConverter)
 process.filter_step = cms.Path(process.Scout4BScoutTrkFilter)
-process.beamspot_step = cms.Path(process.offlineBeamSpot)
 process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
 
 process.schedule = cms.Schedule(
     process.convert_step,
     process.filter_step,
-    process.beamspot_step,
     process.vertexFinderBsJP
 )

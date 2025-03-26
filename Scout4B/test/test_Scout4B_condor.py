@@ -384,7 +384,8 @@ process.Scout4BVertexFinderD0B = cms.EDAnalyzer("Scout4BRecoSecondaryVertexAnaly
 #process.add_(cms.Service("InitRootHandlers", DebugLevel = cms.untracked.int32(1)))
 
 process.convert_step = cms.Path(process.Scout4BConverter)
-process.filter_step = cms.Path(process.Scout4BScoutTrkFilter)
+process.trkfilter_step = cms.Path(process.Scout4BScoutTrkFilter)
+process.bemaspot_step = cms.Path(process.offlineBeamSpot)
 process.vertexFinderBsJP = cms.Path(process.Scout4BVertexFinderBsJP)
 process.vertexFinderBsPP = cms.Path(process.Scout4BVertexFinderBsPP)
 process.vertexFinderB0JK = cms.Path(process.Scout4BVertexFinderB0JK)
@@ -394,7 +395,8 @@ process.vertexFinderD0B = cms.Path(process.Scout4BVertexFinderD0B)
 
 process.schedule = cms.Schedule(
     process.convert_step,
-    process.filter_step,
+    process.trkfilter_step,
+    process.bemaspot_step,
     process.vertexFinderBsJP,
     process.vertexFinderBsPP,
     process.vertexFinderB0JK,
